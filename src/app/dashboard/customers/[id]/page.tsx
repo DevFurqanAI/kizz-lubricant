@@ -264,6 +264,10 @@
 // }
 
 
+
+
+
+
 // "use client";
 
 // import { useState, useEffect, useCallback } from "react";
@@ -275,10 +279,6 @@
 // import { FileSpreadsheet } from "lucide-react";
 
 // type FullCustomer = Customer & { entries: CustomerEntry[] };
-
-// // Module-scoped cache: survives across navigations within the same session.
-// // Lets us paint the last-known data instantly, then quietly refetch in the
-// // background instead of showing a blank skeleton every time the page opens.
 // const customerCache = new Map<string, FullCustomer>();
 
 // export default function CustomerLedgerPage() {
@@ -635,20 +635,21 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatMoney, toNum, fmtDate } from "@/lib/utils";
+import type { Customer, CustomerEntry } from "@/db/schema";
 import { FileSpreadsheet } from "lucide-react";
-import { customerDetailCache as customerCache, type FullCustomer } from "@/lib/customercache";
-import type * as XLSXType from "xlsx";
+
+type FullCustomer = Customer & { entries: CustomerEntry[] };
+const customerCache = new Map<string, FullCustomer>();
 
 export default function CustomerLedgerPage() {
   const { id } = useParams<{ id: string }>();
   const [customer, setCustomer] = useState<FullCustomer | null>(() => customerCache.get(id) ?? null);
   const [loading, setLoading] = useState(() => !customerCache.has(id));
-  const [exporting, setExporting] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -690,23 +691,11 @@ export default function CustomerLedgerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // Preload xlsx the moment this page mounts — well before anyone taps the
-  // export button. Mobile browsers (iOS Safari especially, and in-app
-  // webviews like WhatsApp/Instagram) only allow a download to start
-  // synchronously inside the click that triggered it. Any `await` in that
-  // click path — like a dynamic `import()` — can let the browser decide
-  // the "user gesture" has expired, and it silently drops the download.
-  // Preloading means the click handler never has to await anything.
-  const xlsxRef = useRef<typeof XLSXType | null>(null);
-  useEffect(() => {
-    import("xlsx").then((mod) => { xlsxRef.current = mod; });
-  }, []);
-
   const handleSave = async () => {
     if (!form.date) return;
     setSaving(true);
     try {
-      const entries = await api.post<import("@/db/schema").CustomerEntry[]>(`/customers/${id}/entries`, {
+      const entries = await api.post<CustomerEntry[]>(`/customers/${id}/entries`, {
         ...form,
         debit: form.debit ? Number(form.debit) : 0,
         credit: form.credit ? Number(form.credit) : 0,
@@ -727,7 +716,7 @@ export default function CustomerLedgerPage() {
 
   const handleDelete = async (entryId: number) => {
     if (!confirm("Delete this entry?")) return;
-    const entries = await api.del<import("@/db/schema").CustomerEntry[]>(`/customers/${id}/entries/${entryId}`);
+    const entries = await api.del<CustomerEntry[]>(`/customers/${id}/entries/${entryId}`);
     setCustomer((c) => {
       const next = c ? { ...c, entries } : c;
       if (next) customerCache.set(id, next);
@@ -743,107 +732,68 @@ export default function CustomerLedgerPage() {
     }
   };
 
-  // Builds the workbook and fires the download. Fully synchronous —
-  // no `await` anywhere in this function — so it always runs inside the
-  // original click's user-gesture window, on every browser and device.
-  const buildAndDownload = (XLSX: typeof XLSXType) => {
+  // CSV works reliably on every browser/device — no library quirks, no
+  // mobile Safari blob issues, no in-app browser (WhatsApp/Insta) blocks.
+  // Excel (.xlsx) export was removed because SheetJS's writeFile() relies
+  // on a hidden <a download> click that many mobile browsers/WebViews
+  // silently ignore, so the file never actually downloaded there.
+  const handleExportCSV = () => {
     if (!customer) return;
     const entries = customer.entries ?? [];
 
-    const rows = entries.map((e) => ({
-      Date: fmtDate(e.date),
-      Product: e.product || "",
-      Packing: e.packing || "",
-      Unit: e.unit || "",
-      Qty: e.qty ? Number(e.qty) : "",
-      Rate: e.rate ? Number(toNum(e.rate)) : "",
-      Debit: toNum(e.debit) || "",
-      Credit: toNum(e.credit) || "",
-      Balance: toNum(e.balance),
-      "Account / Note": e.account || "",
-    }));
+    const headers = ["Date", "Product", "Packing", "Unit", "Qty", "Rate", "Debit", "Credit", "Balance", "Account / Note"];
+
+    const rows: (string | number)[][] = entries.map((e) => [
+      fmtDate(e.date),
+      e.product || "",
+      e.packing || "",
+      e.unit || "",
+      e.qty ? Number(e.qty) : "",
+      e.rate ? Number(toNum(e.rate)) : "",
+      toNum(e.debit) || "",
+      toNum(e.credit) || "",
+      toNum(e.balance),
+      e.account || "",
+    ]);
 
     const totalDebit = entries.reduce((a, e) => a + toNum(e.debit), 0);
     const totalCredit = entries.reduce((a, e) => a + toNum(e.credit), 0);
     const lastEntry = entries[entries.length - 1];
     const currentBalance = lastEntry ? toNum(lastEntry.balance) : 0;
 
-    rows.push({
-      Date: "",
-      Product: "",
-      Packing: "",
-      Unit: "",
-      Qty: "",
-      Rate: "",
-      Debit: totalDebit,
-      Credit: totalCredit,
-      Balance: currentBalance,
-      "Account / Note": "TOTAL",
-    });
+    rows.push(["", "", "", "", "", "", totalDebit, totalCredit, currentBalance, "TOTAL"]);
 
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = [
-      { wch: 12 }, { wch: 20 }, { wch: 12 }, { wch: 8 }, { wch: 8 },
-      { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 26 },
-    ];
+    // Escape commas/quotes/newlines per CSV spec
+    const escapeCell = (val: string | number) => {
+      const str = String(val);
+      if (/[",\n]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
+      return str;
+    };
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Ledger");
+    const csvContent =
+      "\uFEFF" + // BOM so Excel/mobile apps detect UTF-8 correctly (fixes non-Latin text)
+      [headers, ...rows].map((row) => row.map(escapeCell).join(",")).join("\r\n");
 
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const safeName = customer.name.replace(/[^a-z0-9]+/gi, "_");
-    const fileName = `${safeName}_ledger_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const fileName = `${safeName}_ledger_${new Date().toISOString().slice(0, 10)}.csv`;
 
-    const buffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-
-    // Old-Edge fallback — harmless no-op everywhere else.
-    const nav = navigator as Navigator & { msSaveOrOpenBlob?: (b: Blob, name: string) => void };
-    if (nav.msSaveOrOpenBlob) {
-      nav.msSaveOrOpenBlob(blob, fileName);
-      return;
-    }
-
+    // iOS Safari + in-app browsers often ignore the `download` attribute on
+    // <a>, so open the blob directly — user can then "Share > Save to Files".
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const supportsDownloadAttr = "download" in a;
 
-    if (supportsDownloadAttr) {
-      // Standard path: desktop Chrome/Firefox/Edge, Android Chrome, and
-      // current-generation iOS Safari all honor this correctly.
+    if (isIOS) {
+      window.open(url, "_blank");
+    } else {
+      const a = document.createElement("a");
       a.href = url;
       a.download = fileName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-    } else {
-      // Very old iOS Safari doesn't support the `download` attribute at
-      // all — it just navigates. Opening the blob URL directly still lets
-      // the person use the native "Save to Files" share-sheet action.
-      window.open(url, "_blank");
     }
-
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-  };
-
-  const handleExportExcel = () => {
-    if (!customer) return;
-    setExporting(true);
-    try {
-      if (xlsxRef.current) {
-        buildAndDownload(xlsxRef.current);
-      } else {
-        // Rare: tapped before the preload finished (e.g. very slow
-        // connection). Still works, just isn't guaranteed to auto-start
-        // on iOS if the gesture window closes during the import — in
-        // that case a second tap (now preloaded) will always work.
-        import("xlsx").then((mod) => {
-          xlsxRef.current = mod;
-          buildAndDownload(mod);
-        });
-      }
-    } finally {
-      setExporting(false);
-    }
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
   };
 
   if (loading) return (
@@ -930,12 +880,12 @@ export default function CustomerLedgerPage() {
         <h2 className="font-display font-semibold uppercase tracking-wide text-gray-700">Ledger</h2>
         <div className="flex gap-3">
           <button
-            onClick={handleExportExcel}
-            disabled={exporting || entries.length === 0}
+            onClick={handleExportCSV}
+            disabled={entries.length === 0}
             className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             <FileSpreadsheet className="w-4 h-4" strokeWidth={2} />
-            {exporting ? "Exporting…" : "Export Excel"}
+            Export CSV
           </button>
           <button
             onClick={() => setShowForm((s) => !s)}
