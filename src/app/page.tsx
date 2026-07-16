@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -44,14 +45,15 @@ export default function LoginPage() {
         {/* Brand panel */}
         <section className="hidden lg:flex flex-col justify-between p-14 border-r border-line">
           <div className="rise">
-            <span className="inline-block font-display font-bold tracking-[0.14em] text-[15px] border-2 border-brass rounded-md px-3 py-1.5 -rotate-1 select-none">
-              Kizz Lubricants
-            </span>
+            <a className="inline-block font-display font-bold tracking-[0.14em] text-[15px] border-2 border-brass rounded-md px-3 py-1.5 -rotate-1 select-none"
+              href="/">
+              <Image src="/logo.png" alt="Logo" width={50} height={50} />
+            </a>
           </div>
 
           <div className="max-w-md">
             <p className="rise rise-1 font-mono text-[11px] tracking-[0.3em] text-brass-dark uppercase mb-6">
-              Business Lead · Admin
+              Business Lead
             </p>
             <h1 className="rise rise-2 font-display font-semibold uppercase leading-[1.04] text-[clamp(2.6rem,4.5vw,4rem)] tracking-tight">
               Every drum,
@@ -73,11 +75,12 @@ export default function LoginPage() {
         {/* Login panel */}
         <section className="flex items-center justify-center px-6 py-16">
           <div className="w-full max-w-[400px]">
-            <div className="lg:hidden mb-10 text-center">
-              <span className="inline-block font-display font-bold tracking-[0.14em] text-sm border-2 border-brass rounded-md px-3 py-1.5 -rotate-1">
-                Kizz Lubricants
-              </span>
-            </div>
+            <div className="rise text-center">
+            <a className="inline-block font-display font-bold tracking-[0.14em] text-[15px]  rounded-md px-3 py-1.5 -rotate-1 select-none"
+              href="/">
+              <Image src="/logo.png" alt="Logo" width={50} height={50} />
+            </a>
+          </div>
 
             <div className="rise bg-white border border-line-strong rounded-2xl shadow-card p-8 sm:p-10">
               <p className="font-mono text-[11px] tracking-[0.3em] text-brass-dark uppercase">
@@ -155,10 +158,10 @@ export default function LoginPage() {
               </div>
             </div>
 
-            
+
           </div>
         </section>
-      </div>
-    </main>
+      </div >
+    </main >
   );
 }

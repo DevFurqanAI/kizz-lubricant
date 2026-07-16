@@ -1,21 +1,4 @@
-// import { getServerSession } from "next-auth";
-// import { redirect } from "next/navigation";
-// import { authOptions } from "@/lib/auth";
-// import Sidebar from "./sidebar";
 
-// export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-//   const session = await getServerSession(authOptions);
-//   if (!session) redirect("/");
-
-//   return (
-//     <div className="flex h-screen bg-[#F7F8FA] overflow-hidden">
-//       <Sidebar userEmail={session.user?.email ?? ""} />
-//       <main className="flex-1 overflow-y-auto">
-//         <div className="p-6 lg:p-8 max-w-[1400px] mx-auto">{children}</div>
-//       </main>
-//     </div>
-//   );
-// }
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
@@ -34,3 +17,4 @@ export default async function DashboardLayout({ children }: { children: React.Re
     </div>
   );
 }
+

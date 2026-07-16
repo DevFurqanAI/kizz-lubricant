@@ -52,3 +52,9 @@ a:focus-visible {
 .rise-1 { animation-delay: 0.05s; }
 .rise-2 { animation-delay: 0.12s; }
 .rise-3 { animation-delay: 0.19s; }
+
+
+h1, h2, h3, h4, h5, h6, .font-display {
+  font-family: var(--font-orbitron), sans-serif !important;
+  letter-spacing: 2px !important; /* 3px tracking force apply */
+}

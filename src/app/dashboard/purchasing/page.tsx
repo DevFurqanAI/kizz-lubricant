@@ -1,3 +1,5 @@
+
+
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
@@ -13,6 +15,8 @@ export default function PurchasingPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0,10), detail: "", amount: "" });
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState({ date: "", detail: "", amount: "" });
 
   const load = useCallback(async (q = "") => {
     setLoading(true);
@@ -27,16 +31,38 @@ export default function PurchasingPage() {
   const handleSave = async () => {
     if (!form.date || !form.detail || !form.amount) return;
     setSaving(true);
+    const tempId = -Date.now();
+    const optimistic: Row = { ...form, id: tempId };
+    const prevRows = rows, prevTotal = total;
+    setRows(r => [optimistic, ...r]);
+    setTotal(t => t + Number(form.amount));
+    setForm({ date: new Date().toISOString().slice(0,10), detail: "", amount: "" });
+    setShowForm(false);
     try {
-      await api.post("/purchasing", { ...form, amount: Number(form.amount) });
-      setForm({ date: new Date().toISOString().slice(0,10), detail: "", amount: "" });
-      setShowForm(false); load(search);
-    } finally { setSaving(false); }
+      const saved = await api.post<Row>("/purchasing", { ...optimistic, amount: Number(optimistic.amount) });
+      setRows(r => r.map(row => row.id === tempId ? saved : row));
+    } catch { setRows(prevRows); setTotal(prevTotal); }
+    finally { setSaving(false); }
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this entry?")) return;
-    await api.del(`/purchasing/${id}`); load(search);
+    const prevRows = rows, prevTotal = total;
+    const del = rows.find(r => r.id === id);
+    setRows(r => r.filter(row => row.id !== id));
+    if (del) setTotal(t => t - Number(del.amount));
+    try { await api.del(`/purchasing/${id}`); }
+    catch { setRows(prevRows); setTotal(prevTotal); }
+  };
+
+  const startEdit = (r: Row) => { setEditId(r.id); setEditForm({ date: r.date.slice(0,10), detail: r.detail, amount: r.amount }); };
+  const saveEdit = async (id: number) => {
+    if (!editForm.date || !editForm.detail || !editForm.amount) return;
+    const prevRows = rows;
+    setRows(rs => rs.map(r => r.id === id ? { ...r, ...editForm } : r));
+    setEditId(null);
+    try { await api.patch(`/purchasing/${id}`, { ...editForm, amount: Number(editForm.amount) }); load(search); }
+    catch { setRows(prevRows); }
   };
 
   return (
@@ -87,12 +113,35 @@ export default function PurchasingPage() {
             <tbody className="divide-y divide-gray-50">
               {loading ? [...Array(4)].map((_, i) => <tr key={i}><td colSpan={4} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded animate-pulse" /></td></tr>) :
                rows.length === 0 ? <tr><td colSpan={4} className="px-6 py-10 text-center text-gray-400 text-sm">No entries yet.</td></tr> :
-               rows.map(r => (
+               rows.map(r => editId === r.id ? (
+                <tr key={r.id} className="bg-rose-50/40">
+                  <td className="px-4 py-2">
+                    <input type="date" value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} className="w-full px-2 py-1.5 rounded-lg border border-rose-200 text-xs bg-white outline-none focus:border-rose-400" />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input value={editForm.detail} onChange={e => setEditForm(f => ({ ...f, detail: e.target.value }))} className="w-full px-2 py-1.5 rounded-lg border border-rose-200 text-sm bg-white outline-none focus:border-rose-400" />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input type="number" value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-2 py-1.5 rounded-lg border border-rose-200 text-sm bg-white text-right font-mono outline-none focus:border-rose-400" />
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap">
+                    <div className="flex items-center gap-4">
+                      <button onClick={() => saveEdit(r.id)} className="text-emerald-600 font-bold">✓</button>
+                      <button onClick={() => setEditId(null)} className="text-gray-400">×</button>
+                    </div>
+                  </td>
+                </tr>
+               ) : (
                 <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{fmtDate(r.date)}</td>
                   <td className="px-4 py-3 text-gray-800">{r.detail}</td>
                   <td className="px-4 py-3 text-right font-mono font-semibold text-rose-600">{formatMoney(r.amount)}</td>
-                  <td className="px-4 py-3"><button onClick={() => handleDelete(r.id)} className="text-gray-300 hover:text-rose-500 transition-colors text-lg leading-none">×</button></td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <div className="flex items-center gap-4">
+                      <button onClick={() => startEdit(r)} className="text-gray-300 hover:text-rose-500 transition-colors">✎</button>
+                      <button onClick={() => handleDelete(r.id)} className="text-gray-300 hover:text-rose-500 transition-colors text-lg leading-none">×</button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

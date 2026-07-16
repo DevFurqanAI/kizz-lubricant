@@ -15,9 +15,9 @@ const config: Config = {
         danger: "#B3402F",
       },
       fontFamily: {
-        display: ["var(--font-oswald)", "sans-serif"],
-        body: ["var(--font-inter)", "system-ui", "sans-serif"],
-        mono: ["var(--font-plex-mono)", "monospace"],
+      display: ["var(--font-orbitron)", "sans-serif"], // <-- Yahan Orbitron hi hona chahiye
+      body: ["var(--font-inter)", "system-ui", "sans-serif"],
+      mono: ["var(--font-plex-mono)", "monospace"],
       },
       boxShadow: {
         card: "0 1px 2px rgba(22,24,29,0.04), 0 8px 32px rgba(22,24,29,0.06)",
