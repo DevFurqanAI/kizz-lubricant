@@ -3,11 +3,17 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import { formatMoney, toNum, monthLabel } from "@/lib/utils";
+import { formatMoney, toNum, monthLabel, cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Receipt, Wallet, Users, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { EmptyState, ErrorState } from "@/components/states";
 import { TrendChart } from "@/components/charts";
-import { dashboardCache, DASH_KEY, type DashboardData } from "@/lib/dashboard-cache";
+import { dashboardCache, DASH_KEY, type DashboardData, type Period } from "@/lib/dashboard-cache";
+
+const PERIODS: { key: Period; label: string; word: string }[] = [
+  { key: "today", label: "Today", word: "today" },
+  { key: "month", label: "This month", word: "this month" },
+  { key: "all", label: "All time", word: "all time" },
+];
 
 /** Plain-language meaning of a customer balance (mixed audience: term + explanation). */
 function balanceStatus(bal: number) {
@@ -23,6 +29,7 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(cached0 ?? null);
   const [loading, setLoading] = useState(!cached0);
   const [error, setError] = useState(false);
+  const [period, setPeriod] = useState<Period>("month");
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) { setLoading(true); setError(false); }
@@ -49,27 +56,52 @@ export default function DashboardPage() {
 
   const { stats, topBalances } = data;
   const revenueTrend = (data.monthlySales ?? []).map((m) => ({ label: monthLabel(m.month), value: toNum(m.total) }));
-  const costTotal = stats.totalPurchasing + stats.totalExpenses + stats.totalSalary;
-  const profit = stats.totalSales - costTotal;
-  const margin = stats.totalSales > 0 ? (profit / stats.totalSales) * 100 : 0;
+
+  // Scope the money flows to the selected period; balances (outstanding/customers) stay current.
+  const periodWord = PERIODS.find((p) => p.key === period)!.word;
+  const salesV = stats.sales[period];
+  const purchV = stats.purchasing[period];
+  const expV = stats.expenses[period];
+  const salV = stats.salary[period];
+  const costTotal = purchV + expV + salV;
+  const profit = salesV - costTotal;
+  const margin = salesV > 0 ? (profit / salesV) * 100 : 0;
   const isProfit = profit >= 0;
 
   // "Money in" vs "money out" — the mental model that works for accountants and non-accountants alike.
   const statCards = [
-    { label: "Sales", value: formatMoney(stats.totalSales), icon: TrendingUp, flow: "in" as const, hint: "Money in" },
-    { label: "Purchasing", value: formatMoney(stats.totalPurchasing), icon: TrendingDown, flow: "out" as const, hint: "Money out" },
-    { label: "Expenses", value: formatMoney(stats.totalExpenses), icon: Receipt, flow: "out" as const, hint: "Money out" },
-    { label: "Salary paid", value: formatMoney(stats.totalSalary), icon: Wallet, flow: "out" as const, hint: "Money out" },
+    { label: "Sales", value: formatMoney(salesV), icon: TrendingUp, flow: "in" as const, hint: "Money in" },
+    { label: "Purchasing", value: formatMoney(purchV), icon: TrendingDown, flow: "out" as const, hint: "Money out" },
+    { label: "Expenses", value: formatMoney(expV), icon: Receipt, flow: "out" as const, hint: "Money out" },
+    { label: "Salary paid", value: formatMoney(salV), icon: Wallet, flow: "out" as const, hint: "Money out" },
   ];
 
   return (
     <div className="space-y-5 pb-10">
       {/* ── Header ─────────────────────────────────────────── */}
-      <div className="rise">
-        <h1 className="text-[26px] font-semibold text-ink">Overview</h1>
-        <p className="mt-1 text-sm text-muted">
-          A snapshot of your whole business — everything you&apos;ve sold, spent, and are still owed.
-        </p>
+      <div className="rise flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-[26px] font-semibold text-ink">Overview</h1>
+          <p className="mt-1 text-sm text-muted">
+            A snapshot of your whole business — everything you&apos;ve sold, spent, and are still owed.
+          </p>
+        </div>
+        {/* Period toggle — rescopes the sales/cost/profit figures below */}
+        <div className="inline-flex items-center rounded-lg border border-line-strong bg-surface p-0.5 shadow-btn">
+          {PERIODS.map((p) => (
+            <button
+              key={p.key}
+              onClick={() => setPeriod(p.key)}
+              aria-pressed={period === p.key}
+              className={cn(
+                "px-3 py-1.5 text-[12.5px] font-medium rounded-md transition-colors",
+                period === p.key ? "bg-accent text-white shadow-btn" : "text-muted hover:text-ink",
+              )}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Hero: Net profit / loss (violet-tinted focal point) ── */}
@@ -80,7 +112,7 @@ export default function DashboardPage() {
         <div className="relative p-6 sm:p-8 pl-7 sm:pl-9">
           <div className="flex items-center gap-2.5">
             <span className="text-[11px] font-semibold uppercase tracking-eyebrow text-accent-ink/70">
-              {isProfit ? "Net profit" : "Net loss"} · all time
+              {isProfit ? "Net profit" : "Net loss"} · {periodWord}
             </span>
             <span
               className={`badge ${isProfit ? "bg-success-tint text-success" : "bg-danger-tint text-danger"}`}
@@ -96,15 +128,17 @@ export default function DashboardPage() {
             {formatMoney(Math.abs(profit))}
           </p>
           <p className="mt-2.5 text-[13.5px] font-medium text-ink">
-            {isProfit
-              ? "You're in profit — you've earned more than you've spent."
-              : "You're running at a loss — you've spent more than you've earned."}
+            {salesV === 0 && costTotal === 0
+              ? `No money moved ${periodWord} yet.`
+              : isProfit
+                ? "You're in profit — you've earned more than you've spent."
+                : "You're running at a loss — you've spent more than you've earned."}
           </p>
 
           {/* Plain-language equation: money in − money out = what's left */}
           <div className="mt-5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[13px]">
             <span className="text-muted">
-              Money in <span className="font-mono font-semibold text-ink tabular-nums">{formatMoney(stats.totalSales)}</span>
+              Money in <span className="font-mono font-semibold text-ink tabular-nums">{formatMoney(salesV)}</span>
             </span>
             <span className="text-faint">−</span>
             <span className="text-muted">

@@ -1,12 +1,16 @@
 import { createLocalCache } from "./localCache";
 
+/** Totals for a money flow across three time windows. */
+export type PeriodTotals = { all: number; today: number; month: number };
+export type Period = keyof PeriodTotals;
+
 /** Shape returned by GET /api/dashboard-stats and cached on the client. */
 export type DashboardData = {
   stats: {
-    totalSales: number;
-    totalPurchasing: number;
-    totalExpenses: number;
-    totalSalary: number;
+    sales: PeriodTotals;
+    purchasing: PeriodTotals;
+    expenses: PeriodTotals;
+    salary: PeriodTotals;
     outstanding: number;
     custCount: number;
   };
