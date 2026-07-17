@@ -1,11 +1,10 @@
-
-
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatMoney, toNum, fmtDate } from "@/lib/utils";
-import type { Sale } from "@/db/schema";
 import { createLocalCache } from "@/lib/localCache";
+import { customerDetailCache } from "@/lib/customercache";
 import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
 import { Pagination } from "@/components/pagination";
@@ -14,7 +13,18 @@ import { SortHeader, type Sort, nextSort } from "@/components/sort-header";
 import { SearchInput } from "@/components/search-input";
 import { TrendingUp } from "lucide-react";
 
-type SalesData = { rows: Sale[]; total: number; count: number };
+type SaleRow = {
+  id: number;
+  date: string;
+  detail: string;
+  qty: string | null;
+  rate: string | null;
+  amount: string;
+  customerId: number | null;
+  customerName: string | null;
+};
+type SalesData = { rows: SaleRow[]; total: number; count: number };
+type CustomerOption = { id: number; name: string };
 
 const PAGE_SIZE = 50;
 const salesCache = createLocalCache<SalesData>("sales", { ttlMs: 5 * 60_000 });
@@ -23,7 +33,7 @@ const keyFor = (q: string, s: Sort, p: number) => `${q}|${s.col}|${s.dir}|p${p}`
 export default function SalesPage() {
   const initSort: Sort = { col: "date", dir: "desc" };
   const cached0 = salesCache.get(keyFor("", initSort, 1));
-  const [rows, setRows] = useState<Sale[]>(cached0?.rows ?? []);
+  const [rows, setRows] = useState<SaleRow[]>(cached0?.rows ?? []);
   const [total, setTotal] = useState(cached0?.total ?? 0);
   const [count, setCount] = useState(cached0?.count ?? 0);
   const [page, setPage] = useState(1);
@@ -33,9 +43,10 @@ export default function SalesPage() {
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ date: new Date().toISOString().slice(0,10), detail: "", qty: "", rate: "", amount: "" });
+  const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), detail: "", qty: "", rate: "", amount: "", customerId: "" });
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ date: "", detail: "", qty: "", rate: "", amount: "" });
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toast = useToast();
   const confirm = useConfirm();
@@ -67,6 +78,11 @@ export default function SalesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Customer options for the "sell to" picker.
+  useEffect(() => {
+    api.get<CustomerOption[]>("/customers/options").then(setCustomers).catch(() => {});
+  }, []);
+
   const applyView = (q: string, p: number, s: Sort) => {
     const cached = salesCache.get(keyFor(q, s, p));
     if (cached) { setRows(cached.rows); setTotal(cached.total); setCount(cached.count); }
@@ -90,31 +106,46 @@ export default function SalesPage() {
     if (!form.date || !form.detail || !form.amount) return;
     setSaving(true);
     try {
-      await api.post<Sale>("/sales", { ...form, qty: form.qty ? Number(form.qty) : null, rate: form.rate ? Number(form.rate) : null, amount: Number(form.amount) });
-      setForm({ date: new Date().toISOString().slice(0,10), detail: "", qty: "", rate: "", amount: "" });
+      await api.post<SaleRow>("/sales", {
+        date: form.date,
+        detail: form.detail,
+        qty: form.qty ? Number(form.qty) : null,
+        rate: form.rate ? Number(form.rate) : null,
+        amount: Number(form.amount),
+        customerId: form.customerId ? Number(form.customerId) : null,
+      });
+      // The linked customer's ledger just changed — drop its cached detail.
+      if (form.customerId) customerDetailCache.delete(form.customerId);
+      setForm({ date: new Date().toISOString().slice(0, 10), detail: "", qty: "", rate: "", amount: "", customerId: "" });
       setShowForm(false);
       salesCache.clear();
       setPage(1);
       load(search, 1, sort);
-      toast.success("Sale added");
+      toast.success(form.customerId ? "Sale added & posted to ledger" : "Sale added");
     } catch { toast.error("Couldn't add sale"); }
     finally { setSaving(false); }
   };
 
   const handleDelete = async (id: number) => {
-    if (!(await confirm({ title: "Delete this sale?", confirmText: "Delete", danger: true }))) return;
-    const prevRows = rows, prevTotal = total, prevCount = count;
     const del = rows.find(r => r.id === id);
+    const linked = del?.customerId ? " Its ledger entry will be removed too." : "";
+    if (!(await confirm({ title: "Delete this sale?", message: `This can't be undone.${linked}`, confirmText: "Delete", danger: true }))) return;
+    const prevRows = rows, prevTotal = total, prevCount = count;
     setRows(r => r.filter(row => row.id !== id));
     if (del) setTotal(t => t - toNum(del.amount));
     setCount(c => Math.max(0, c - 1));
-    try { await api.del(`/sales/${id}`); salesCache.clear(); load(search, page, sort, { silent: true }); toast.success("Sale deleted"); }
-    catch { setRows(prevRows); setTotal(prevTotal); setCount(prevCount); toast.error("Couldn't delete sale"); }
+    try {
+      await api.del(`/sales/${id}`);
+      if (del?.customerId) customerDetailCache.delete(String(del.customerId));
+      salesCache.clear();
+      load(search, page, sort, { silent: true });
+      toast.success("Sale deleted");
+    } catch { setRows(prevRows); setTotal(prevTotal); setCount(prevCount); toast.error("Couldn't delete sale"); }
   };
 
-  const startEdit = (r: Sale) => {
+  const startEdit = (r: SaleRow) => {
     setEditId(r.id);
-    setEditForm({ date: r.date.slice(0,10), detail: r.detail, qty: r.qty ? String(r.qty) : "", rate: r.rate ? String(r.rate) : "", amount: r.amount });
+    setEditForm({ date: r.date.slice(0, 10), detail: r.detail, qty: r.qty ? String(r.qty) : "", rate: r.rate ? String(r.rate) : "", amount: r.amount });
   };
 
   const handleEditAutoAmount = () => {
@@ -125,10 +156,12 @@ export default function SalesPage() {
   const saveEdit = async (id: number) => {
     if (!editForm.date || !editForm.detail || !editForm.amount) return;
     const prevRows = rows;
-    setRows(rs => rs.map(r => r.id === id ? { ...r, ...editForm } as Sale : r));
+    const edited = rows.find(r => r.id === id);
+    setRows(rs => rs.map(r => r.id === id ? { ...r, ...editForm } as SaleRow : r));
     setEditId(null);
     try {
       await api.patch(`/sales/${id}`, { ...editForm, qty: editForm.qty ? Number(editForm.qty) : null, rate: editForm.rate ? Number(editForm.rate) : null, amount: Number(editForm.amount) });
+      if (edited?.customerId) customerDetailCache.delete(String(edited.customerId));
       salesCache.clear();
       load(search, page, sort, { silent: true });
       toast.success("Sale updated");
@@ -151,6 +184,25 @@ export default function SalesPage() {
       {showForm && (
         <div className="card p-6">
           <h3 className="font-semibold text-ink mb-4">New Sale</h3>
+
+          {/* Customer link — the automation: pick one and it posts to their ledger too */}
+          <div className="mb-4">
+            <label className="label">Customer</label>
+            <select
+              value={form.customerId}
+              onChange={e => setForm(f => ({ ...f, customerId: e.target.value }))}
+              className="select py-2.5 text-sm max-w-xs"
+            >
+              <option value="">— Walk-in / cash sale —</option>
+              {customers.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-muted mt-1.5">
+              Pick a customer and this sale is auto-posted to their ledger as a debit — no double entry.
+            </p>
+          </div>
+
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             {[
               { key: "date", label: "Date", type: "date" },
@@ -186,11 +238,12 @@ export default function SalesPage() {
 
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[640px]">
+          <table className="w-full text-sm min-w-[760px]">
             <thead>
               <tr className="bg-black/[0.02] border-b border-line">
                 <SortHeader col="date" label="Date" sort={sort} onSort={onSort} />
                 <th className="th">Detail</th>
+                <th className="th">Customer</th>
                 <th className="th">Qty</th>
                 <th className="th text-right">Rate</th>
                 <SortHeader col="amount" label="Amount" sort={sort} onSort={onSort} align="right" />
@@ -199,11 +252,11 @@ export default function SalesPage() {
             </thead>
             <tbody className="divide-y divide-line">
               {loading ? (
-                <TableSkeleton rows={6} cols={6} />
+                <TableSkeleton rows={6} cols={7} />
               ) : error ? (
-                <tr><td colSpan={6}><ErrorState onRetry={() => load(search, page, sort)} compact /></td></tr>
+                <tr><td colSpan={7}><ErrorState onRetry={() => load(search, page, sort)} compact /></td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={6}><EmptyState icon={TrendingUp} compact title={search ? "No matches" : "No sales yet"} description={search ? `Nothing matches “${search}”.` : "Record your first sale with the “Add Sale” button."} /></td></tr>
+                <tr><td colSpan={7}><EmptyState icon={TrendingUp} compact title={search ? "No matches" : "No sales yet"} description={search ? `Nothing matches “${search}”.` : "Record your first sale with the “Add Sale” button."} /></td></tr>
               ) : rows.map(r => editId === r.id ? (
                 <tr key={r.id} className="bg-accent-tint/40">
                   <td className="px-4 py-2">
@@ -212,6 +265,7 @@ export default function SalesPage() {
                   <td className="px-4 py-2">
                     <input value={editForm.detail} onChange={e => setEditForm(f => ({ ...f, detail: e.target.value }))} className="input px-2 py-1.5 text-sm" />
                   </td>
+                  <td className="px-4 py-2 text-muted text-xs whitespace-nowrap">{r.customerName ?? "Cash"}</td>
                   <td className="px-4 py-2">
                     <input type="number" value={editForm.qty} onChange={e => setEditForm(f => ({ ...f, qty: e.target.value }))} onBlur={handleEditAutoAmount} className="input px-2 py-1.5 text-xs" />
                   </td>
@@ -232,6 +286,15 @@ export default function SalesPage() {
                 <tr key={r.id} className="hover:bg-black/[0.015] transition-colors">
                   <td className="px-4 py-3 text-muted text-xs whitespace-nowrap">{fmtDate(r.date)}</td>
                   <td className="px-4 py-3 text-ink">{r.detail}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {r.customerId && r.customerName ? (
+                      <Link href={`/dashboard/customers/${r.customerId}`} className="text-[13px] text-accent-ink hover:text-accent-hover font-medium transition-colors">
+                        {r.customerName}
+                      </Link>
+                    ) : (
+                      <span className="text-muted text-xs">Cash</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-muted text-xs">{r.qty ? Number(r.qty).toLocaleString() : "—"}</td>
                   <td className="px-4 py-3 text-right font-mono text-muted text-xs tabular-nums">{r.rate ? formatMoney(r.rate) : "—"}</td>
                   <td className="px-4 py-3 text-right font-mono font-semibold text-ink tabular-nums">{formatMoney(r.amount)}</td>
@@ -247,7 +310,7 @@ export default function SalesPage() {
             {rows.length > 0 && (
               <tfoot>
                 <tr className="border-t border-line bg-black/[0.02]">
-                  <td colSpan={4} className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                  <td colSpan={5} className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted">
                     {search ? "Total (filtered)" : "Total Sales"}
                   </td>
                   <td className="px-4 py-3 text-right font-mono font-semibold text-ink tabular-nums">{formatMoney(total)}</td>

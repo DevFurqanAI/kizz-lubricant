@@ -70,9 +70,15 @@ export const sales = pgTable("sales", {
   qty: numeric("qty", { precision: 12, scale: 3 }),
   rate: numeric("rate", { precision: 14, scale: 2 }),
   amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+  // Optional link to a customer. When set, the sale mirrors itself into that
+  // customer's ledger as a debit; `ledgerEntryId` points at that auto-created
+  // row so edits/deletes stay in sync. Both null = walk-in / cash sale.
+  customerId: integer("customer_id").references(() => customers.id, { onDelete: "set null" }),
+  ledgerEntryId: integer("ledger_entry_id").references(() => customerEntries.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
   index("sales_date_idx").on(t.date.desc(), t.id.desc()),
+  index("sales_customer_idx").on(t.customerId),
 ]);
 
 // ─── Purchasing ───────────────────────────────────────────────
