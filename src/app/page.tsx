@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
+import { dashboardCache, DASH_KEY, type DashboardData } from "@/lib/dashboard-cache";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,6 +14,12 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Wake Neon's serverless DB while the user is still typing, so its cold-start
+  // is over by the time they reach the dashboard.
+  useEffect(() => {
+    fetch("/api/health").catch(() => {});
+  }, []);
 
   async function handleSubmit() {
     if (!email || !password) {
@@ -28,6 +36,11 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
+    // Fire the dashboard fetch now (fire-and-forget) so its data is already in
+    // flight — and often cached — before the dashboard component mounts.
+    api.get<DashboardData>("/dashboard-stats")
+      .then((d) => dashboardCache.set(DASH_KEY, d))
+      .catch(() => {});
     router.push("/dashboard");
     router.refresh();
   }

@@ -65,7 +65,7 @@ export default function Sidebar({ userEmail }: { userEmail: string }) {
 
         {/* Nav */}
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-          <p className="px-3 pb-2 pt-1 eyebrow">Ledgers</p>
+          <p className="px-3 pb-2 pt-1 eyebrow">Records</p>
           {NAV.map(({ href, label, icon: Icon }) => {
             const active = isActive(href);
             return (

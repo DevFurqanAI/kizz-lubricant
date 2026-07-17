@@ -181,12 +181,11 @@ export default function SalaryPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <p className="eyebrow">Payroll</p>
-          <div className="mt-1.5 flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5">
             <h1 className="text-[26px] font-semibold text-ink">Salary</h1>
             {count > 0 && <span className="badge-neutral tabular-nums">{count.toLocaleString()}</span>}
           </div>
-          <p className="mt-1 text-sm text-muted">Staff salary payments, tracked by employee and transfer method.</p>
+          <p className="mt-1 text-sm text-muted">Staff salary payments, tracked by employee and transfer method — money going out.</p>
         </div>
         <button onClick={() => setShowForm(s => !s)} className="btn-primary">+ Add Payment</button>
       </div>

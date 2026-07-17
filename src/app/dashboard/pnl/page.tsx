@@ -51,8 +51,7 @@ export default function PnlPage() {
   if (error && !data) return (
     <div className="space-y-6">
       <div>
-        <p className="eyebrow">Analysis</p>
-        <h1 className="mt-1.5 text-[26px] font-semibold text-ink">Profit &amp; Loss</h1>
+        <h1 className="text-[26px] font-semibold text-ink">Profit &amp; Loss</h1>
       </div>
       <div className="card"><ErrorState onRetry={() => { setLoading(true); load(); }} /></div>
     </div>
@@ -64,9 +63,8 @@ export default function PnlPage() {
   return (
     <div className="space-y-8">
       <div>
-        <p className="eyebrow">Analysis</p>
-        <h1 className="mt-1.5 text-[26px] font-semibold text-ink">Profit &amp; Loss</h1>
-        <p className="mt-1 text-sm text-muted">Monthly breakdown of sales against all costs — purchasing, expenses and salary.</p>
+        <h1 className="text-[26px] font-semibold text-ink">Profit &amp; Loss</h1>
+        <p className="mt-1 text-sm text-muted">Month by month: what you sold, minus everything you spent, and what was left.</p>
       </div>
 
       {/* Grand total banner */}
@@ -80,6 +78,11 @@ export default function PnlPage() {
           </div>
           <p className={`mt-3 font-mono text-4xl font-semibold tabular-nums ${isProfit ? "text-ink" : "text-danger"}`}>
             {formatMoney(Math.abs(g.profit))}
+          </p>
+          <p className="mt-2 text-[13px] text-muted">
+            Sales <span className="font-medium text-ink">{formatMoney(g.sales)}</span> minus all costs{" "}
+            <span className="font-medium text-ink">{formatMoney(g.totalCost)}</span>.{" "}
+            {isProfit ? "You kept what's left." : "You spent more than you earned."}
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 mt-6 pt-6 border-t border-line">
             <div><p className="text-[11px] text-muted uppercase tracking-wider">Total Sales</p><p className="font-mono font-semibold text-ink mt-0.5 tabular-nums">{formatMoney(g.sales)}</p></div>

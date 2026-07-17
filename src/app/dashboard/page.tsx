@@ -1,73 +1,72 @@
-import { getServerSession } from "next-auth";
-import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/db";
-import { sales, purchasing, expenses, salary, customers } from "@/db/schema";
-import { sql } from "drizzle-orm";
-import { formatMoney, toNum } from "@/lib/utils";
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { TrendingUp, TrendingDown, Receipt, Wallet, Users, ArrowUpRight } from "lucide-react";
-import { EmptyState } from "@/components/states";
+import { api } from "@/lib/api";
+import { formatMoney, toNum } from "@/lib/utils";
+import { TrendingUp, TrendingDown, Receipt, Wallet, Users, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { EmptyState, ErrorState } from "@/components/states";
+import { dashboardCache, DASH_KEY, type DashboardData } from "@/lib/dashboard-cache";
 
-async function getStats() {
-  const [[{ totalSales }], [{ totalPurch }], [{ totalExp }], [{ totalSal }], [{ custCount }]] =
-    await Promise.all([
-      db.select({ totalSales: sql<string>`COALESCE(SUM(amount),0)` }).from(sales),
-      db.select({ totalPurch: sql<string>`COALESCE(SUM(amount),0)` }).from(purchasing),
-      db.select({ totalExp: sql<string>`COALESCE(SUM(amount),0)` }).from(expenses),
-      db.select({ totalSal: sql<string>`COALESCE(SUM(amount),0)` }).from(salary),
-      db.select({ custCount: sql<string>`COUNT(*)` }).from(customers),
-    ]);
-
-  const latestBal = await db.execute(sql`
-    SELECT COALESCE(SUM(latest_bal), 0) AS total_outstanding
-    FROM (
-      SELECT DISTINCT ON (customer_id) balance AS latest_bal
-      FROM customer_entries
-      ORDER BY customer_id, date DESC, id DESC
-    ) sub
-  `);
-
-  const outstanding = toNum((latestBal.rows[0] as Record<string, string>).total_outstanding);
-  const s = toNum(totalSales), p = toNum(totalPurch), e = toNum(totalExp), sal = toNum(totalSal);
-  const profit = s - (p + e + sal);
-  const margin = s > 0 ? (profit / s) * 100 : 0;
-  return { totalSales: s, totalPurchasing: p, totalExpenses: e, totalSalary: sal, profit, margin, outstanding, custCount: Number(custCount) };
+/** Plain-language meaning of a customer balance (mixed audience: term + explanation). */
+function balanceStatus(bal: number) {
+  if (bal > 0) return { label: "Owes you", cls: "text-warning", dot: "bg-warning" };
+  if (bal < 0) return { label: "Paid ahead", cls: "text-success", dot: "bg-success" };
+  return { label: "Settled", cls: "text-muted", dot: "bg-faint" };
 }
 
-async function getTopCustomerBalances() {
-  const rows = await db.execute(sql`
-    SELECT c.id, c.name, c.address, c.phone,
-      (SELECT balance FROM customer_entries ce WHERE ce.customer_id = c.id ORDER BY date DESC, id DESC LIMIT 1) AS balance
-    FROM customers c
-    ORDER BY ABS(COALESCE((SELECT balance FROM customer_entries ce WHERE ce.customer_id = c.id ORDER BY date DESC, id DESC LIMIT 1),0)) DESC NULLS LAST
-    LIMIT 10
-  `);
-  return rows.rows as { id: number; name: string; address: string; phone: string; balance: string }[];
-}
+export default function DashboardPage() {
+  // Paint instantly from the last-known snapshot (localStorage), then refresh in
+  // the background — the same stale-while-revalidate pattern the ledger pages use.
+  const cached0 = dashboardCache.get(DASH_KEY);
+  const [data, setData] = useState<DashboardData | null>(cached0 ?? null);
+  const [loading, setLoading] = useState(!cached0);
+  const [error, setError] = useState(false);
 
-export default async function DashboardPage() {
-  const session = await getServerSession(authOptions);
-  if (!session) redirect("/");
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) { setLoading(true); setError(false); }
+    try {
+      const d = await api.get<DashboardData>("/dashboard-stats");
+      dashboardCache.set(DASH_KEY, d);
+      setData(d);
+    } catch {
+      if (!opts?.silent) setError(true);
+    } finally {
+      if (!opts?.silent) setLoading(false);
+    }
+  }, []);
 
-  const [stats, customerBalances] = await Promise.all([getStats(), getTopCustomerBalances()]);
-  const isProfit = stats.profit >= 0;
+  useEffect(() => {
+    const cached = dashboardCache.get(DASH_KEY);
+    if (cached) { setData(cached); setLoading(false); load({ silent: true }); }
+    else load();
+  }, [load]);
 
+  if (loading && !data) return <DashboardSkeleton />;
+  if (error && !data) return <div className="card"><ErrorState onRetry={() => load()} /></div>;
+  if (!data) return null;
+
+  const { stats, topBalances } = data;
+  const costTotal = stats.totalPurchasing + stats.totalExpenses + stats.totalSalary;
+  const profit = stats.totalSales - costTotal;
+  const margin = stats.totalSales > 0 ? (profit / stats.totalSales) * 100 : 0;
+  const isProfit = profit >= 0;
+
+  // "Money in" vs "money out" — the mental model that works for accountants and non-accountants alike.
   const statCards = [
-    { label: "Sales", value: formatMoney(stats.totalSales), icon: TrendingUp },
-    { label: "Purchasing", value: formatMoney(stats.totalPurchasing), icon: TrendingDown },
-    { label: "Expenses", value: formatMoney(stats.totalExpenses), icon: Receipt },
-    { label: "Salary paid", value: formatMoney(stats.totalSalary), icon: Wallet },
+    { label: "Sales", value: formatMoney(stats.totalSales), icon: TrendingUp, flow: "in" as const, hint: "Money in" },
+    { label: "Purchasing", value: formatMoney(stats.totalPurchasing), icon: TrendingDown, flow: "out" as const, hint: "Money out" },
+    { label: "Expenses", value: formatMoney(stats.totalExpenses), icon: Receipt, flow: "out" as const, hint: "Money out" },
+    { label: "Salary paid", value: formatMoney(stats.totalSalary), icon: Wallet, flow: "out" as const, hint: "Money out" },
   ];
 
   return (
     <div className="space-y-5 pb-10">
       {/* ── Header ─────────────────────────────────────────── */}
       <div className="rise">
-        <p className="eyebrow">Dashboard</p>
-        <h1 className="mt-1.5 text-[26px] font-semibold text-ink">Overview</h1>
+        <h1 className="text-[26px] font-semibold text-ink">Overview</h1>
         <p className="mt-1 text-sm text-muted">
-          Live totals across every ledger — sales, purchasing, expenses and salary.
+          A snapshot of your whole business — everything you&apos;ve sold, spent, and are still owed.
         </p>
       </div>
 
@@ -84,7 +83,7 @@ export default async function DashboardPage() {
             <span
               className={`badge ${isProfit ? "bg-success-tint text-success" : "bg-danger-tint text-danger"}`}
             >
-              {isProfit ? "▲" : "▼"} {stats.margin.toFixed(1)}%
+              {isProfit ? "▲" : "▼"} {margin.toFixed(1)}% margin
             </span>
           </div>
           <p
@@ -92,12 +91,31 @@ export default async function DashboardPage() {
               isProfit ? "text-ink" : "text-danger"
             }`}
           >
-            {formatMoney(Math.abs(stats.profit))}
+            {formatMoney(Math.abs(profit))}
           </p>
-          <p className="mt-3 text-[13px] text-muted">
-            Sales <span className="text-ink font-medium">{formatMoney(stats.totalSales)}</span> less
-            cost of {formatMoney(stats.totalPurchasing + stats.totalExpenses + stats.totalSalary)}
+          <p className="mt-2.5 text-[13.5px] font-medium text-ink">
+            {isProfit
+              ? "You're in profit — you've earned more than you've spent."
+              : "You're running at a loss — you've spent more than you've earned."}
           </p>
+
+          {/* Plain-language equation: money in − money out = what's left */}
+          <div className="mt-5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[13px]">
+            <span className="text-muted">
+              Money in <span className="font-mono font-semibold text-ink tabular-nums">{formatMoney(stats.totalSales)}</span>
+            </span>
+            <span className="text-faint">−</span>
+            <span className="text-muted">
+              Money out <span className="font-mono font-semibold text-ink tabular-nums">{formatMoney(costTotal)}</span>
+            </span>
+            <span className="text-faint">=</span>
+            <span className="text-muted">
+              What&apos;s left{" "}
+              <span className={`font-mono font-semibold tabular-nums ${isProfit ? "text-success" : "text-danger"}`}>
+                {isProfit ? "" : "−"}{formatMoney(Math.abs(profit))}
+              </span>
+            </span>
+          </div>
 
           {/* Secondary metrics — full-width row, room to breathe */}
           <div className="mt-7 grid grid-cols-2 gap-4 pt-6 border-t border-accent/15">
@@ -108,6 +126,7 @@ export default async function DashboardPage() {
               <p className="mt-2 font-mono text-2xl font-semibold text-ink tabular-nums">
                 {stats.custCount}
               </p>
+              <p className="mt-1 text-[12px] text-muted">on your books</p>
             </div>
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-eyebrow text-accent-ink/70">
@@ -120,6 +139,7 @@ export default async function DashboardPage() {
               >
                 {formatMoney(stats.outstanding)}
               </p>
+              <p className="mt-1 text-[12px] text-muted">customers still owe you</p>
             </div>
           </div>
         </div>
@@ -127,35 +147,64 @@ export default async function DashboardPage() {
 
       {/* ── Stat grid (secondary) ──────────────────────────── */}
       <div className="rise rise-2 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {statCards.map((c) => (
-          <div key={c.label} className="card-interactive p-4 sm:p-5">
-            <div className="flex items-center gap-2">
-              <span className="grid place-items-center w-7 h-7 rounded-lg bg-accent-tint text-accent-ink">
-                <c.icon className="w-3.5 h-3.5" strokeWidth={2.2} />
-              </span>
-              <p className="eyebrow">{c.label}</p>
+        {statCards.map((c) => {
+          const isIn = c.flow === "in";
+          return (
+            <div key={c.label} className="card-interactive p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="grid place-items-center w-7 h-7 rounded-lg bg-accent-tint text-accent-ink flex-shrink-0">
+                    <c.icon className="w-3.5 h-3.5" strokeWidth={2.2} />
+                  </span>
+                  <p className="text-[13px] font-semibold text-ink truncate">{c.label}</p>
+                </div>
+              </div>
+              <p className="mt-3 font-mono text-xl sm:text-[26px] leading-none font-semibold text-ink tabular-nums whitespace-nowrap">
+                {c.value}
+              </p>
+              <p
+                className={`mt-2.5 inline-flex items-center gap-1 text-[11px] font-medium ${
+                  isIn ? "text-success" : "text-muted"
+                }`}
+              >
+                {isIn ? (
+                  <ArrowUpRight className="w-3 h-3" strokeWidth={2.5} />
+                ) : (
+                  <ArrowDownRight className="w-3 h-3" strokeWidth={2.5} />
+                )}
+                {c.hint}
+              </p>
             </div>
-            <p className="mt-3 font-mono text-xl sm:text-[26px] leading-none font-semibold text-ink tabular-nums whitespace-nowrap">
-              {c.value}
-            </p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* ── Customer balances ──────────────────────────────── */}
       <div className="rise rise-3 card overflow-hidden">
-        <div className="px-5 sm:px-6 py-4 border-b border-line flex items-center justify-between">
+        <div className="px-5 sm:px-6 py-4 border-b border-line flex items-start justify-between gap-4">
           <div>
-            <p className="eyebrow">Accounts</p>
-            <h2 className="mt-0.5 text-[15px] font-semibold text-ink">Customer balances</h2>
+            <h2 className="text-[15px] font-semibold text-ink">Customer balances</h2>
+            <p className="mt-0.5 text-[12.5px] text-muted">Who owes you money, and who&apos;s paid ahead.</p>
           </div>
           <Link
             href="/dashboard/customers"
-            className="inline-flex items-center gap-1 text-[13px] text-accent-ink hover:text-accent-hover font-medium transition-colors"
+            className="mt-0.5 inline-flex items-center gap-1 text-[13px] text-accent-ink hover:text-accent-hover font-medium transition-colors flex-shrink-0"
           >
             View all <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={2.5} />
           </Link>
         </div>
+
+        {/* Legend — decodes the amber / green colours so nobody has to guess */}
+        {topBalances.length > 0 && (
+          <div className="px-5 sm:px-6 py-2.5 border-b border-line bg-black/[0.01] flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12px]">
+            <span className="flex items-center gap-1.5 text-muted">
+              <span className="w-2 h-2 rounded-full bg-warning" /> <span className="text-warning font-medium">Owes you</span> — unpaid balance
+            </span>
+            <span className="flex items-center gap-1.5 text-muted">
+              <span className="w-2 h-2 rounded-full bg-success" /> <span className="text-success font-medium">Paid ahead</span> — credit on account
+            </span>
+          </div>
+        )}
 
         {/* Desktop table */}
         <div className="hidden sm:block overflow-x-auto">
@@ -165,13 +214,14 @@ export default async function DashboardPage() {
                 <th className="th">Customer</th>
                 <th className="th">Address</th>
                 <th className="th">Phone</th>
+                <th className="th">Status</th>
                 <th className="th text-right">Balance</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {customerBalances.length === 0 ? (
+              {topBalances.length === 0 ? (
                 <tr>
-                  <td colSpan={4}>
+                  <td colSpan={5}>
                     <EmptyState
                       icon={Users}
                       compact
@@ -182,8 +232,9 @@ export default async function DashboardPage() {
                   </td>
                 </tr>
               ) : (
-                customerBalances.map((c) => {
+                topBalances.map((c) => {
                   const bal = toNum(c.balance);
+                  const status = balanceStatus(bal);
                   return (
                     <tr key={c.id} className="hover:bg-black/[0.015] transition-colors">
                       <td className="td py-3.5">
@@ -196,10 +247,14 @@ export default async function DashboardPage() {
                       </td>
                       <td className="td py-3.5 text-muted text-xs">{c.address || "—"}</td>
                       <td className="td py-3.5 text-muted text-xs font-mono">{c.phone || "—"}</td>
+                      <td className="td py-3.5">
+                        <span className={`inline-flex items-center gap-1.5 text-[12px] font-medium ${status.cls}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+                          {status.label}
+                        </span>
+                      </td>
                       <td
-                        className={`td py-3.5 text-right font-mono font-semibold text-[13px] tabular-nums ${
-                          bal > 0 ? "text-warning" : bal < 0 ? "text-success" : "text-muted"
-                        }`}
+                        className={`td py-3.5 text-right font-mono font-semibold text-[13px] tabular-nums ${status.cls}`}
                       >
                         {formatMoney(bal)}
                       </td>
@@ -213,7 +268,7 @@ export default async function DashboardPage() {
 
         {/* Mobile card list */}
         <div className="sm:hidden divide-y divide-line">
-          {customerBalances.length === 0 ? (
+          {topBalances.length === 0 ? (
             <EmptyState
               icon={Users}
               compact
@@ -222,8 +277,9 @@ export default async function DashboardPage() {
               action={<Link href="/dashboard/customers" className="btn-primary">+ Add Customer</Link>}
             />
           ) : (
-            customerBalances.map((c) => {
+            topBalances.map((c) => {
               const bal = toNum(c.balance);
+              const status = balanceStatus(bal);
               return (
                 <Link
                   key={c.id}
@@ -232,14 +288,10 @@ export default async function DashboardPage() {
                 >
                   <div className="min-w-0">
                     <p className="font-medium text-ink text-sm truncate">{c.name}</p>
-                    <p className="text-muted text-[11px] mt-0.5 truncate">
-                      {c.phone || c.address || "—"}
-                    </p>
+                    <p className={`text-[11px] mt-0.5 font-medium ${status.cls}`}>{status.label}</p>
                   </div>
                   <p
-                    className={`font-mono font-semibold text-sm tabular-nums flex-shrink-0 ${
-                      bal > 0 ? "text-warning" : bal < 0 ? "text-success" : "text-muted"
-                    }`}
+                    className={`font-mono font-semibold text-sm tabular-nums flex-shrink-0 ${status.cls}`}
                   >
                     {formatMoney(bal)}
                   </p>
@@ -247,6 +299,37 @@ export default async function DashboardPage() {
               );
             })
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** First-load skeleton, shaped like the real dashboard so the swap is seamless. */
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-5 pb-10 animate-pulse">
+      <div className="space-y-2">
+        <div className="h-7 w-40 bg-black/[0.06] rounded" />
+        <div className="h-3 w-80 max-w-full bg-black/[0.04] rounded" />
+      </div>
+      <div className="rounded-2xl bg-accent-tint/60 border border-accent/10 h-56" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="card p-4 sm:p-5 h-28">
+            <div className="h-7 w-7 rounded-lg bg-black/[0.05]" />
+            <div className="mt-4 h-6 w-24 bg-black/[0.05] rounded" />
+          </div>
+        ))}
+      </div>
+      <div className="card overflow-hidden">
+        <div className="h-14 border-b border-line" />
+        <div className="divide-y divide-line">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="px-5 py-4">
+              <div className="h-4 bg-black/[0.04] rounded" style={{ width: `${88 - i * 7}%` }} />
+            </div>
+          ))}
         </div>
       </div>
     </div>

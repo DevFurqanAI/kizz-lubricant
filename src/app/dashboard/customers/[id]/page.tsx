@@ -293,10 +293,10 @@ export default function CustomerLedgerPage() {
             <div className="text-right">
               <p className="text-[11px] uppercase tracking-wider text-muted font-semibold">Current Balance</p>
               <p className={`font-mono text-2xl font-semibold mt-0.5 tabular-nums ${currentBalance > 0 ? "text-warning" : currentBalance < 0 ? "text-success" : "text-muted"}`}>
-                {formatMoney(currentBalance)}
+                {formatMoney(Math.abs(currentBalance))}
               </p>
-              <p className="text-xs text-muted mt-0.5">
-                {currentBalance > 0 ? "Customer owes" : currentBalance < 0 ? "Advance paid" : "Settled"}
+              <p className={`text-xs mt-0.5 font-medium ${currentBalance > 0 ? "text-warning" : currentBalance < 0 ? "text-success" : "text-muted"}`}>
+                {currentBalance > 0 ? "Customer owes you this" : currentBalance < 0 ? "Paid ahead by this" : "Fully settled"}
               </p>
             </div>
           </div>
@@ -305,21 +305,27 @@ export default function CustomerLedgerPage() {
             <div>
               <p className="text-[11px] uppercase tracking-wider text-muted font-semibold">Total Debit</p>
               <p className="font-mono font-semibold text-warning mt-1 tabular-nums">{formatMoney(totalDebit)}</p>
+              <p className="text-[11px] text-muted mt-0.5">Goods billed to them</p>
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-wider text-muted font-semibold">Total Credit</p>
               <p className="font-mono font-semibold text-success mt-1 tabular-nums">{formatMoney(totalCredit)}</p>
+              <p className="text-[11px] text-muted mt-0.5">Payments received</p>
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-wider text-muted font-semibold">Transactions</p>
               <p className="font-mono font-semibold text-ink mt-1 tabular-nums">{entries.length}</p>
+              <p className="text-[11px] text-muted mt-0.5">Rows in the ledger</p>
             </div>
           </div>
         </div>
       </div>
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h2 className="text-lg font-semibold tracking-tight text-ink">Ledger</h2>
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight text-ink">Ledger</h2>
+          <p className="mt-0.5 text-[12.5px] text-muted">Every transaction in order, with the running balance after each one.</p>
+        </div>
         <div className="flex gap-3 flex-wrap">
           <button
             onClick={exportLedger}
@@ -385,6 +391,16 @@ export default function CustomerLedgerPage() {
       )}
 
       <div className="card overflow-hidden">
+        {entries.length > 0 && (
+          <div className="px-4 py-2.5 border-b border-line bg-black/[0.01] flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12px]">
+            <span className="flex items-center gap-1.5 text-muted">
+              <span className="w-2 h-2 rounded-full bg-warning" /> <span className="text-warning font-medium">Debit</span> — goods billed to them (increases what they owe)
+            </span>
+            <span className="flex items-center gap-1.5 text-muted">
+              <span className="w-2 h-2 rounded-full bg-success" /> <span className="text-success font-medium">Credit</span> — payment received (reduces what they owe)
+            </span>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[900px]">
             <thead>

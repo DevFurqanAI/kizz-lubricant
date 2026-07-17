@@ -137,12 +137,11 @@ export default function SalesPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <p className="eyebrow">Income</p>
-          <div className="mt-1.5 flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5">
             <h1 className="text-[26px] font-semibold text-ink">Sales</h1>
             {count > 0 && <span className="badge-neutral tabular-nums">{count.toLocaleString()}</span>}
           </div>
-          <p className="mt-1 text-sm text-muted">Every sale made from the factory.</p>
+          <p className="mt-1 text-sm text-muted">Every sale made from the factory — your money coming in.</p>
         </div>
         <button onClick={() => setShowForm(s => !s)} className="btn-primary">+ Add Sale</button>
       </div>

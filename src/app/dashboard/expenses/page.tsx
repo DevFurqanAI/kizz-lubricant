@@ -154,12 +154,11 @@ export default function ExpensesPage() {
       {/* ── Header ─────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <p className="eyebrow">Costs</p>
-          <div className="mt-1.5 flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5">
             <h1 className="text-[26px] font-semibold text-ink">Expenses</h1>
             {count > 0 && <span className="badge-neutral tabular-nums">{count.toLocaleString()}</span>}
           </div>
-          <p className="mt-1 text-sm text-muted">Plant rent, petrol, repairs and other running costs.</p>
+          <p className="mt-1 text-sm text-muted">Plant rent, petrol, repairs and other running costs — money going out.</p>
         </div>
         <button onClick={() => setShowForm((s) => !s)} className="btn-primary">
           <Plus className="w-4 h-4" strokeWidth={2.5} />

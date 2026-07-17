@@ -131,12 +131,11 @@ export default function CustomersPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <p className="eyebrow">Accounts</p>
-          <div className="mt-1.5 flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5">
             <h1 className="text-[26px] font-semibold text-ink">Customers</h1>
             {count > 0 && <span className="badge-neutral tabular-nums">{count.toLocaleString()}</span>}
           </div>
-          <p className="mt-1 text-sm text-muted">Each customer has a full ledger — debit, credit and running balance.</p>
+          <p className="mt-1 text-sm text-muted">Everyone you buy from or sell to. Open a card to see their full history and what they owe.</p>
         </div>
         <button onClick={() => setShowForm(s => !s)} className="btn-primary">
           + Add Customer
@@ -170,7 +169,19 @@ export default function CustomersPage() {
         </div>
       )}
 
-      <SearchInput value={search} onChange={handleSearch} placeholder="Search customers…" className="max-w-sm" />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SearchInput value={search} onChange={handleSearch} placeholder="Search customers…" className="max-w-sm w-full" />
+        {!loading && !error && customers.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px]">
+            <span className="flex items-center gap-1.5 text-muted">
+              <span className="w-2 h-2 rounded-full bg-warning" /> <span className="text-warning font-medium">Owes you</span>
+            </span>
+            <span className="flex items-center gap-1.5 text-muted">
+              <span className="w-2 h-2 rounded-full bg-success" /> <span className="text-success font-medium">Paid ahead</span>
+            </span>
+          </div>
+        )}
+      </div>
 
       {loading ? (
         <CardGridSkeleton count={8} />
@@ -215,7 +226,7 @@ export default function CustomersPage() {
                     {c.name.charAt(0).toUpperCase()}
                   </div>
                   <span className={`badge ${bal > 0 ? "bg-warning-tint text-warning" : bal < 0 ? "bg-success-tint text-success" : "bg-black/[0.05] text-muted"}`}>
-                    {bal > 0 ? "Owes" : bal < 0 ? "Credit" : "Settled"}
+                    {bal > 0 ? "Owes you" : bal < 0 ? "Paid ahead" : "Settled"}
                   </span>
                 </div>
                 <p className="font-semibold text-ink group-hover:text-accent transition-colors">{c.name}</p>
