@@ -17,8 +17,11 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Kizz Lubricants — Admin",
+  title: "Kizz Lubricants",
   description: "Business ledger admin panel for Kizz Lubricants",
+  icons: {
+    icon: '/favicon.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

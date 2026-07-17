@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -29,15 +30,17 @@ const NAV = [
 function Brand() {
   return (
     <div className="flex items-center gap-2.5 select-none">
-      <span className="flex-shrink-0 grid place-items-center w-8 h-8 rounded-[9px] bg-accent text-white text-[15px] font-semibold shadow-accent-glow">
-        K
-      </span>
+      <Image
+        src="/logo.png"
+        alt="Kizz Lubricants"
+        width={44}
+        height={44}
+        priority
+        className="flex-shrink-0 w-[44px] h-[44px] rounded-lg object-contain"
+      />
       <span className="leading-tight">
-        <span className="block text-[13.5px] font-semibold tracking-tight text-ink">
+        <span className="block text-[15px] font-semibold tracking-tight text-ink">
           Kizz Lubricants
-        </span>
-        <span className="block text-[10.5px] tracking-eyebrow uppercase text-faint">
-          Ledger
         </span>
       </span>
     </div>

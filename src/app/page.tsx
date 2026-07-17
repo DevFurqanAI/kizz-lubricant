@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
@@ -40,10 +41,15 @@ export default function LoginPage() {
           <div className="pointer-events-none absolute -left-24 -bottom-24 w-96 h-96 rounded-full bg-accent/15 blur-[120px]" />
 
           <div className="rise relative flex items-center gap-2.5">
-            <span className="grid place-items-center w-9 h-9 rounded-[10px] bg-accent text-white font-semibold shadow-accent-glow">
-              K
-            </span>
-            <span className="text-[15px] font-semibold tracking-tight text-ink">Kizz Lubricants</span>
+            <Image
+              src="/logo.png"
+              alt="Kizz Lubricants"
+              width={54}
+              height={54}
+              priority
+              className="flex-shrink-0 w-[54px] h-[54px] rounded-lg object-contain"
+            />
+            <span className="text-[20px] font-semibold tracking-tight text-ink">Kizz Lubricants</span>
           </div>
 
           <div className="relative max-w-md">
