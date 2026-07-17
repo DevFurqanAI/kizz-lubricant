@@ -28,6 +28,33 @@ body {
   outline-offset: 2px;
 }
 
+/* ── Scrollbars — slim, graphite thumb that warms to the accent on hover ── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(38, 38, 47, 0.22) transparent;
+}
+*::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(38, 38, 47, 0.2);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.2s;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(109, 94, 240, 0.55);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* Tabular figures wherever the data face is used. */
 .font-mono {
   font-feature-settings: "tnum" 1;
@@ -143,6 +170,21 @@ body {
 }
 .rise {
   animation: rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Page-level content transition on route change — a quick fade so switching
+   pages feels smooth instead of snapping in before data has loaded. Opacity
+   only, so it never fights the per-section `rise` transforms inside a page. */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.page-enter {
+  animation: page-enter 0.24s ease both;
 }
 .rise-1 {
   animation-delay: 0.05s;

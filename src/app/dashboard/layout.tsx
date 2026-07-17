@@ -5,6 +5,7 @@ import Sidebar from "./sidebar";
 import { ToastProvider } from "@/components/toast";
 import { ConfirmProvider } from "@/components/confirm";
 import { SearchProvider } from "@/components/command-palette";
+import { PageTransition } from "./page-transition";
 import { DashboardGuard } from "./guard";
 
 // No server session here — that's what forced a function to run on every visit.
@@ -20,7 +21,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <div className="min-h-screen bg-canvas">
                 <Sidebar />
                 <main className="md:ml-[248px] pt-14 pb-24 md:pt-0 md:pb-0 min-h-screen overflow-y-auto">
-                  <div className="p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto">{children}</div>
+                  <div className="p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto">
+                  <PageTransition>{children}</PageTransition>
+                </div>
                 </main>
               </div>
             </DashboardGuard>
