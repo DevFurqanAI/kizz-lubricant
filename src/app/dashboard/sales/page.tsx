@@ -5,10 +5,13 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
 import { formatMoney, toNum, fmtDate } from "@/lib/utils";
 import type { Sale } from "@/db/schema";
+import { createLocalCache } from "@/lib/localCache";
+import { useToast } from "@/components/toast";
+import { useConfirm } from "@/components/confirm";
 
 type SalesData = { rows: Sale[]; total: number };
 
-const salesCache = new Map<string, SalesData>();
+const salesCache = createLocalCache<SalesData>("sales", { ttlMs: 5 * 60_000 });
 
 export default function SalesPage() {
   const cached0 = salesCache.get("");
@@ -22,6 +25,8 @@ export default function SalesPage() {
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ date: "", detail: "", qty: "", rate: "", amount: "" });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const load = useCallback(async (q = "", opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -73,18 +78,19 @@ export default function SalesPage() {
       const saved = await api.post<Sale>("/sales", { ...form, qty: form.qty ? Number(form.qty) : null, rate: form.rate ? Number(form.rate) : null, amount: Number(form.amount) });
       setRows(r => r.map(row => row.id === tempId ? saved : row));
       salesCache.clear();
-    } catch { setRows(prevRows); setTotal(prevTotal); }
+      toast.success("Sale added");
+    } catch { setRows(prevRows); setTotal(prevTotal); toast.error("Couldn't add sale"); }
     finally { setSaving(false); }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Delete this sale?")) return;
+    if (!(await confirm({ title: "Delete this sale?", confirmText: "Delete", danger: true }))) return;
     const prevRows = rows, prevTotal = total;
     const del = rows.find(r => r.id === id);
     setRows(r => r.filter(row => row.id !== id));
     if (del) setTotal(t => t - toNum(del.amount));
-    try { await api.del(`/sales/${id}`); salesCache.clear(); }
-    catch { setRows(prevRows); setTotal(prevTotal); }
+    try { await api.del(`/sales/${id}`); salesCache.clear(); toast.success("Sale deleted"); }
+    catch { setRows(prevRows); setTotal(prevTotal); toast.error("Couldn't delete sale"); }
   };
 
   const startEdit = (r: Sale) => {
@@ -106,7 +112,8 @@ export default function SalesPage() {
       await api.patch(`/sales/${id}`, { ...editForm, qty: editForm.qty ? Number(editForm.qty) : null, rate: editForm.rate ? Number(editForm.rate) : null, amount: Number(editForm.amount) });
       salesCache.clear();
       load(search);
-    } catch { setRows(prevRows); }
+      toast.success("Sale updated");
+    } catch { setRows(prevRows); toast.error("Couldn't update sale"); }
   };
 
   return (
@@ -115,7 +122,7 @@ export default function SalesPage() {
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-600 font-mono">Income</p>
           <h1 className="mt-1 text-2xl font-display font-bold uppercase tracking-wide text-gray-900">Sales</h1>
-          <p className="mt-1 text-sm text-gray-400">Every sale made from the factory.</p>
+          <p className="mt-1 text-sm text-gray-500">Every sale made from the factory.</p>
         </div>
         <button onClick={() => setShowForm(s => !s)} className="px-4 py-2.5 bg-[#111318] text-white text-sm font-semibold rounded-xl hover:bg-black transition-colors">+ Add Sale</button>
       </div>
@@ -132,7 +139,7 @@ export default function SalesPage() {
               { key: "amount", label: "Amount (Rs) *", type: "number" },
             ].map(({ key, label, type }) => (
               <div key={key}>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">{label}</label>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">{label}</label>
                 <input type={type} value={(form as Record<string, string>)[key]}
                   onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
                   onBlur={key === "rate" || key === "qty" ? handleAutoAmount : undefined}
@@ -140,7 +147,7 @@ export default function SalesPage() {
               </div>
             ))}
           </div>
-          <p className="text-xs text-gray-400 mt-2">Tip: Enter Qty + Rate — Amount auto-calculates on blur.</p>
+          <p className="text-xs text-gray-500 mt-2">Tip: Enter Qty + Rate — Amount auto-calculates on blur.</p>
           <div className="flex gap-3 mt-4">
             <button onClick={handleSave} disabled={saving || !form.detail || !form.amount} className="px-5 py-2.5 bg-[#111318] text-white text-sm font-semibold rounded-xl disabled:opacity-50">{saving ? "Saving…" : "Save Sale"}</button>
             <button onClick={() => setShowForm(false)} className="px-5 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50">Cancel</button>
@@ -151,7 +158,7 @@ export default function SalesPage() {
       <div className="flex items-center justify-between gap-4">
         <input value={search} onChange={e => handleSearch(e.target.value)} placeholder="Search sales…" className="w-full max-w-sm px-4 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:border-emerald-400 outline-none" />
         <div className="text-right flex-shrink-0">
-          <p className="text-[11px] text-gray-400 uppercase tracking-wider">Total</p>
+          <p className="text-[11px] text-gray-500 uppercase tracking-wider">Total</p>
           <p className="font-mono font-bold text-emerald-600">{formatMoney(total)}</p>
         </div>
       </div>
@@ -160,7 +167,7 @@ export default function SalesPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[640px]">
             <thead>
-              <tr className="bg-[#111318] text-white">
+              <tr className="bg-gradient-to-r from-[#1C1F27] via-[#101318] to-[#0B0D12] text-white">
                 {["Date", "Detail", "Qty", "Rate", "Amount", ""].map(h => (
                   <th key={h} className={`py-3 px-4 text-[11px] font-semibold uppercase tracking-wider ${h === "Amount" || h === "Rate" ? "text-right" : "text-left"}`}>{h}</th>
                 ))}
@@ -170,7 +177,7 @@ export default function SalesPage() {
               {loading ? (
                 [...Array(5)].map((_, i) => <tr key={i}><td colSpan={6} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded animate-pulse" /></td></tr>)
               ) : rows.length === 0 ? (
-                <tr><td colSpan={6} className="px-6 py-10 text-center text-gray-400 text-sm">No sales recorded yet.</td></tr>
+                <tr><td colSpan={6} className="px-6 py-10 text-center text-gray-500 text-sm">No sales recorded yet.</td></tr>
               ) : rows.map(r => editId === r.id ? (
                 <tr key={r.id} className="bg-emerald-50/40">
                   <td className="px-4 py-2">
@@ -191,7 +198,7 @@ export default function SalesPage() {
                   <td className="px-4 py-2 whitespace-nowrap">
                     <div className="flex items-center gap-4">
                       <button onClick={() => saveEdit(r.id)} className="text-emerald-600 font-bold">✓</button>
-                      <button onClick={() => setEditId(null)} className="text-gray-400">×</button>
+                      <button onClick={() => setEditId(null)} className="text-gray-500">×</button>
                     </div>
                   </td>
                 </tr>

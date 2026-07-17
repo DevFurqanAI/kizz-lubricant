@@ -1,37 +1,21 @@
-type CacheEntry<T> = { data: T; ts: number };
+import { createLocalCache } from "@/lib/localCache";
 
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const PREFIX = "expenses_cache:";
+/**
+ * Expenses cache — a thin facade over the shared `createLocalCache` so the
+ * expenses page keeps its `getCache` / `setCache` / `clearCache` API while
+ * using the same localStorage-backed, stale-while-revalidate store as every
+ * other ledger page (sales, salary, purchasing…).
+ */
+const cache = createLocalCache<unknown>("expenses", { ttlMs: 5 * 60_000 });
 
 export function getCache<T>(key: string): T | null {
-  try {
-    const raw = sessionStorage.getItem(PREFIX + key);
-    if (!raw) return null;
-    const entry: CacheEntry<T> = JSON.parse(raw);
-    if (Date.now() - entry.ts > CACHE_TTL) {
-      sessionStorage.removeItem(PREFIX + key);
-      return null;
-    }
-    return entry.data;
-  } catch {
-    return null;
-  }
+  return (cache.get(key) as T | undefined) ?? null;
 }
 
 export function setCache<T>(key: string, data: T) {
-  try {
-    sessionStorage.setItem(PREFIX + key, JSON.stringify({ data, ts: Date.now() }));
-  } catch {
-    // sessionStorage full or unavailable — fail silently, cache is best-effort
-  }
+  cache.set(key, data);
 }
 
 export function clearCache() {
-  try {
-    Object.keys(sessionStorage)
-      .filter((k) => k.startsWith(PREFIX))
-      .forEach((k) => sessionStorage.removeItem(k));
-  } catch {
-    // ignore
-  }
+  cache.clear();
 }

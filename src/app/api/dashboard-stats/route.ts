@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
-import { sales, purchasing, expenses, salary, customers, customerEntries } from "@/db/schema";
+import { sales, purchasing, expenses, salary, customers } from "@/db/schema";
 import { sql } from "drizzle-orm";
 
 export async function GET() {

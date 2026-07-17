@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
-import { sales, purchasing, expenses, salary } from "@/db/schema";
 import { sql } from "drizzle-orm";
 
 type MonthBucket = {

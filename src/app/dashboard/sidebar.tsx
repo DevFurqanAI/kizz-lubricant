@@ -18,13 +18,13 @@ import {
 } from "lucide-react";
 
 const NAV = [
-  { href: "/dashboard", label: "Overview", icon: LayoutGrid, stage: "00" },
-  { href: "/dashboard/customers", label: "Customers", icon: Users, stage: "01" },
-  { href: "/dashboard/sales", label: "Sales", icon: TrendingUp, stage: "02" },
-  { href: "/dashboard/purchasing", label: "Purchasing", icon: TrendingDown, stage: "03" },
-  { href: "/dashboard/expenses", label: "Expenses", icon: Receipt, stage: "04" },
-  { href: "/dashboard/salary", label: "Salary", icon: Wallet, stage: "05" },
-  { href: "/dashboard/pnl", label: "Profit & Loss", icon: BarChart3, stage: "06" },
+  { href: "/dashboard", label: "Overview", icon: LayoutGrid },
+  { href: "/dashboard/customers", label: "Customers", icon: Users },
+  { href: "/dashboard/sales", label: "Sales", icon: TrendingUp },
+  { href: "/dashboard/purchasing", label: "Purchasing", icon: TrendingDown },
+  { href: "/dashboard/expenses", label: "Expenses", icon: Receipt },
+  { href: "/dashboard/salary", label: "Salary", icon: Wallet },
+  { href: "/dashboard/pnl", label: "Profit & Loss", icon: BarChart3 },
 ];
 
 export default function Sidebar({ userEmail }: { userEmail: string }) {
@@ -60,7 +60,7 @@ export default function Sidebar({ userEmail }: { userEmail: string }) {
               <p className="font-display font-bold text-[#0B0D12] text-[13px] tracking-wider uppercase leading-none">
                 Kizz Lubricants
               </p>
-              <p className="text-[10px] text-black/40 mt-1 tracking-[0.2em] uppercase font-mono">
+              <p className="text-[10px] text-black/55 mt-1 tracking-[0.2em] uppercase font-mono">
                 Lubricants Co.
               </p>
             </div>
@@ -70,7 +70,7 @@ export default function Sidebar({ userEmail }: { userEmail: string }) {
         {/* Nav */}
         <nav className="flex-1 py-5 px-3 space-y-0.5 overflow-y-auto">
           
-          {NAV.map(({ href, label, icon: Icon, stage }) => {
+          {NAV.map(({ href, label, icon: Icon }) => {
             const active = isActive(href);
             return (
               <Link
@@ -89,19 +89,11 @@ export default function Sidebar({ userEmail }: { userEmail: string }) {
                 <Icon
                   className={cn(
                     "w-4 h-4 flex-shrink-0 transition-colors",
-                    active ? "text-[#F59E0B]" : "text-black/35 group-hover:text-black/60"
+                    active ? "text-[#F59E0B]" : "text-black/50 group-hover:text-black/60"
                   )}
                   strokeWidth={2}
                 />
                 <span className="flex-1">{label}</span>
-                <span
-                  className={cn(
-                    "text-[9px] font-mono tracking-wider transition-colors",
-                    active ? "text-white/35" : "text-black/20"
-                  )}
-                >
-                  
-                </span>
               </Link>
             );
           })}
@@ -111,7 +103,7 @@ export default function Sidebar({ userEmail }: { userEmail: string }) {
         <div className="px-3 py-4 border-t border-black/[0.07]">
           <div className="px-3 mb-3 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-            <p className="text-[11px] text-black/45 truncate font-mono">{userEmail}</p>
+            <p className="text-[11px] text-black/55 truncate font-mono">{userEmail}</p>
           </div>
           <button
             onClick={() => signOut({ callbackUrl: "/" })}
@@ -142,7 +134,7 @@ export default function Sidebar({ userEmail }: { userEmail: string }) {
         <button
           onClick={() => signOut({ callbackUrl: "/" })}
           aria-label="Sign out"
-          className="w-8 h-8 flex items-center justify-center rounded-lg text-black/45 active:bg-black/[0.06]"
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-black/55 active:bg-black/[0.06]"
         >
           <LogOut className="w-[18px] h-[18px]" strokeWidth={2} />
         </button>
@@ -173,7 +165,7 @@ export default function Sidebar({ userEmail }: { userEmail: string }) {
                   <Icon
                     className={cn(
                       "w-[19px] h-[19px] transition-colors",
-                      active ? "text-[#F59E0B]" : "text-black/40"
+                      active ? "text-[#F59E0B]" : "text-black/55"
                     )}
                     strokeWidth={active ? 2.3 : 2}
                   />

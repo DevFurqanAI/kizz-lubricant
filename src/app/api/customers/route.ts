@@ -2,16 +2,32 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
-import { customers, customerEntries } from "@/db/schema";
+import { customers } from "@/db/schema";
 import { ilike, or, sql } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const search = req.nextUrl.searchParams.get("search") ?? "";
-  const rows = search
-    ? await db.select().from(customers).where(or(ilike(customers.name, `%${search}%`), ilike(customers.address, `%${search}%`)))
-    : await db.select().from(customers);
+
+  // Two independent queries in parallel: the customer list, and each
+  // customer's latest running balance in a single DISTINCT ON pass.
+  // (Replaces the old client-side N+1 that fetched every ledger per customer.)
+  const [list, balances] = await Promise.all([
+    search
+      ? db.select().from(customers).where(or(ilike(customers.name, `%${search}%`), ilike(customers.address, `%${search}%`)))
+      : db.select().from(customers),
+    db.execute(sql`
+      SELECT DISTINCT ON (customer_id) customer_id, balance
+      FROM customer_entries
+      ORDER BY customer_id, date DESC, id DESC
+    `),
+  ]);
+
+  const balMap = new Map(
+    (balances.rows as Array<{ customer_id: number; balance: string }>).map((r) => [Number(r.customer_id), Number(r.balance)])
+  );
+  const rows = list.map((c) => ({ ...c, balance: balMap.get(c.id) ?? 0 }));
   return NextResponse.json(rows);
 }
 

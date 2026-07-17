@@ -16,6 +16,7 @@
     "@neondatabase/serverless": "^0.10.4",
     "bcryptjs": "^2.4.3",
     "drizzle-orm": "^0.38.3",
+    "exceljs": "^4.4.0",
     "lucide-react": "^1.24.0",
     "next": "14.2.21",
     "next-auth": "^4.24.11",

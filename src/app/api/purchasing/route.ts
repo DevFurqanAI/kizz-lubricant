@@ -9,10 +9,12 @@ export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const search = req.nextUrl.searchParams.get("search") ?? "";
-  const rows = search
-    ? await db.select().from(purchasing).where(ilike(purchasing.detail, `%${search}%`)).orderBy(desc(purchasing.date), desc(purchasing.id))
-    : await db.select().from(purchasing).orderBy(desc(purchasing.date), desc(purchasing.id));
-  const [{ total }] = await db.select({ total: sql<string>`COALESCE(SUM(amount),0)` }).from(purchasing);
+  const [rows, [{ total }]] = await Promise.all([
+    search
+      ? db.select().from(purchasing).where(ilike(purchasing.detail, `%${search}%`)).orderBy(desc(purchasing.date), desc(purchasing.id))
+      : db.select().from(purchasing).orderBy(desc(purchasing.date), desc(purchasing.id)),
+    db.select({ total: sql<string>`COALESCE(SUM(amount),0)` }).from(purchasing),
+  ]);
   return NextResponse.json({ rows, total: Number(total) });
 }
 

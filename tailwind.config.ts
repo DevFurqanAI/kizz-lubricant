@@ -9,9 +9,11 @@ const config: Config = {
         "ink-soft": "#5B5F6B",
         line: "#ECEDF0",
         "line-strong": "#DFE1E6",
-        brass: "#B8862F",
-        "brass-dark": "#8F6621",
-        "brass-tint": "#FBF6EC",
+        // Brand accent — amber, unified with the dashboard (was muted brass).
+        // Token names kept as `brass*` to avoid churn; values are the amber palette.
+        brass: "#D97706",
+        "brass-dark": "#B45309",
+        "brass-tint": "#FFF7ED",
         danger: "#B3402F",
       },
       fontFamily: {

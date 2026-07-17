@@ -5,12 +5,15 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { api } from "@/lib/api";
 import { formatMoney, toNum, fmtDate } from "@/lib/utils";
+import { createLocalCache } from "@/lib/localCache";
+import { useToast } from "@/components/toast";
+import { useConfirm } from "@/components/confirm";
 
 type Row = { id: number; date: string; employee: string; amount: string; account: string };
 type SalaryData = { rows: Row[]; total: number };
 type EditFormT = { date: string; employee: string; amount: string; account: string };
 
-const salaryCache = new Map<string, SalaryData>();
+const salaryCache = createLocalCache<SalaryData>("salary", { ttlMs: 5 * 60_000 });
 const VIEW_STYLES = ["table", "cards", "minimal"] as const;
 type ViewStyle = typeof VIEW_STYLES[number];
 const VIEW_LABELS: Record<ViewStyle, string> = { table: "Table", cards: "Cards", minimal: "Minimal" };
@@ -90,6 +93,8 @@ export default function SalaryPage() {
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [viewStyle, setViewStyle] = useState<ViewStyle>("table");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const load = useCallback(async (q = "", opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -131,18 +136,19 @@ export default function SalaryPage() {
       const saved = await api.post<Row>("/salary", { ...optimistic, amount: Number(optimistic.amount) });
       setRows(r => r.map(row => row.id === tempId ? saved : row));
       salaryCache.clear();
-    } catch { setRows(prevRows); setTotal(prevTotal); }
+      toast.success("Payment added");
+    } catch { setRows(prevRows); setTotal(prevTotal); toast.error("Couldn't add payment"); }
     finally { setSaving(false); }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Delete?")) return;
+    if (!(await confirm({ title: "Delete this payment?", confirmText: "Delete", danger: true }))) return;
     const prevRows = rows, prevTotal = total;
     const del = rows.find(r => r.id === id);
     setRows(r => r.filter(row => row.id !== id));
     if (del) setTotal(t => t - toNum(del.amount));
-    try { await api.del(`/salary/${id}`); salaryCache.clear(); }
-    catch { setRows(prevRows); setTotal(prevTotal); }
+    try { await api.del(`/salary/${id}`); salaryCache.clear(); toast.success("Payment deleted"); }
+    catch { setRows(prevRows); setTotal(prevTotal); toast.error("Couldn't delete payment"); }
   };
 
   const startEdit = (r: Row) => { setEditId(r.id); setEditForm({ date: r.date.slice(0, 10), employee: r.employee, amount: r.amount, account: r.account ?? "" }); };
@@ -151,8 +157,8 @@ export default function SalaryPage() {
     const prevRows = rows;
     setRows(rs => rs.map(r => r.id === id ? { ...r, ...editForm } : r));
     setEditId(null);
-    try { await api.patch(`/salary/${id}`, { ...editForm, amount: Number(editForm.amount) }); salaryCache.clear(); load(search); }
-    catch { setRows(prevRows); }
+    try { await api.patch(`/salary/${id}`, { ...editForm, amount: Number(editForm.amount) }); salaryCache.clear(); load(search); toast.success("Payment updated"); }
+    catch { setRows(prevRows); toast.error("Couldn't update payment"); }
   };
 
   const sortedRows = useMemo(() => {
@@ -169,7 +175,7 @@ export default function SalaryPage() {
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-600 font-mono">Payroll</p>
           <h1 className="mt-1 text-2xl font-display font-bold uppercase tracking-wide text-gray-900">Salary</h1>
-          <p className="mt-1 text-sm text-gray-400">Staff salary payments, tracked by employee and transfer method.</p>
+          <p className="mt-1 text-sm text-gray-500">Staff salary payments, tracked by employee and transfer method.</p>
         </div>
         <button onClick={() => setShowForm(s => !s)} className="px-4 py-2.5 bg-[#111318] text-white text-sm font-semibold rounded-xl hover:bg-black">+ Add Payment</button>
       </div>
@@ -199,7 +205,7 @@ export default function SalaryPage() {
           <h3 className="font-semibold text-gray-800 mb-4">New Payment</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[{ key: "date", label: "Date", type: "date" }, { key: "employee", label: "Employee *", type: "text" }, { key: "amount", label: "Amount (Rs) *", type: "number" }, { key: "account", label: "Paid Via / Account", type: "text" }].map(({ key, label, type }) => (
-              <div key={key}><label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">{label}</label><input type={type} value={(form as Record<string, string>)[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white focus:border-violet-400 outline-none" /></div>
+              <div key={key}><label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">{label}</label><input type={type} value={(form as Record<string, string>)[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white focus:border-violet-400 outline-none" /></div>
             ))}
           </div>
           <div className="flex gap-3 mt-4">
@@ -232,13 +238,13 @@ export default function SalaryPage() {
       {loading ? (
         <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-14 bg-gray-100 rounded-2xl animate-pulse" />)}</div>
       ) : sortedRows.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-gray-100 px-6 py-14 text-center text-gray-400 text-sm">No salary records yet.</div>
+        <div className="bg-white rounded-2xl border border-gray-100 px-6 py-14 text-center text-gray-500 text-sm">No salary records yet.</div>
 
       ) : viewStyle === "table" ? (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[520px]">
-              <thead><tr className="bg-[#111318] text-white">{["Date", "Employee", "Amount", "Paid Via", ""].map(h => <th key={h} className={`py-3 px-4 text-[11px] font-semibold uppercase tracking-wider ${h === "Amount" ? "text-right" : "text-left"}`}>{h}</th>)}</tr></thead>
+              <thead><tr className="bg-gradient-to-r from-[#1C1F27] via-[#101318] to-[#0B0D12] text-white">{["Date", "Employee", "Amount", "Paid Via", ""].map(h => <th key={h} className={`py-3 px-4 text-[11px] font-semibold uppercase tracking-wider ${h === "Amount" ? "text-right" : "text-left"}`}>{h}</th>)}</tr></thead>
               <tbody className="divide-y divide-gray-50">
                 {sortedRows.map(r => editId === r.id ? (
                   <tr key={r.id} className="bg-violet-50/40">
@@ -247,14 +253,14 @@ export default function SalaryPage() {
                         <EditRowInputs editForm={editForm} setEditForm={setEditForm} />
                       </div>
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap"><div className="flex items-center gap-4"><button onClick={() => saveEdit(r.id)} className="text-emerald-600 font-bold">✓</button><button onClick={() => setEditId(null)} className="text-gray-400">×</button></div></td>
+                    <td className="px-4 py-2 whitespace-nowrap"><div className="flex items-center gap-4"><button onClick={() => saveEdit(r.id)} className="text-emerald-600 font-bold">✓</button><button onClick={() => setEditId(null)} className="text-gray-500">×</button></div></td>
                   </tr>
                 ) : (
                   <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{fmtDate(r.date)}</td>
                     <td className="px-4 py-3 font-semibold text-gray-800">{r.employee}</td>
                     <td className="px-4 py-3 text-right font-mono font-semibold text-violet-600">{formatMoney(r.amount)}</td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">{r.account || "—"}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{r.account || "—"}</td>
                     <td className="px-4 py-3 whitespace-nowrap"><RowActions r={r} startEdit={startEdit} handleDelete={handleDelete} /></td>
                   </tr>
                 ))}
@@ -270,14 +276,14 @@ export default function SalaryPage() {
               <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
                 <EditRowInputs editForm={editForm} setEditForm={setEditForm} />
               </div>
-              <div className="flex gap-4 pt-1"><button onClick={() => saveEdit(r.id)} className="text-emerald-600 font-bold text-sm">✓ Save</button><button onClick={() => setEditId(null)} className="text-gray-400 text-sm">Cancel</button></div>
+              <div className="flex gap-4 pt-1"><button onClick={() => saveEdit(r.id)} className="text-emerald-600 font-bold text-sm">✓ Save</button><button onClick={() => setEditId(null)} className="text-gray-500 text-sm">Cancel</button></div>
             </div>
           ) : (
             <div key={r.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-3 sm:gap-4">
               <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600 font-bold text-sm flex-shrink-0">{r.employee.charAt(0).toUpperCase()}</div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-gray-800 text-sm truncate">{r.employee}</p>
-                <p className="text-[11px] text-gray-400 mt-0.5 truncate">{fmtDate(r.date)} · {r.account || "—"}</p>
+                <p className="text-[11px] text-gray-500 mt-0.5 truncate">{fmtDate(r.date)} · {r.account || "—"}</p>
               </div>
               <p className="font-mono font-bold text-violet-600 flex-shrink-0 text-sm sm:text-base">{formatMoney(r.amount)}</p>
               <RowActions r={r} startEdit={startEdit} handleDelete={handleDelete} />
@@ -290,14 +296,14 @@ export default function SalaryPage() {
           {sortedRows.map(r => editId === r.id ? (
             <div key={r.id} className="px-4 py-3 bg-violet-50/50 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
               <EditRowInputs editForm={editForm} setEditForm={setEditForm} dense />
-              <div className="flex gap-4 sm:ml-auto"><button onClick={() => saveEdit(r.id)} className="text-emerald-600 font-bold">✓</button><button onClick={() => setEditId(null)} className="text-gray-400">×</button></div>
+              <div className="flex gap-4 sm:ml-auto"><button onClick={() => saveEdit(r.id)} className="text-emerald-600 font-bold">✓</button><button onClick={() => setEditId(null)} className="text-gray-500">×</button></div>
             </div>
           ) : (
             <div key={r.id} className="px-4 py-3 flex items-center gap-3 hover:bg-gray-50/50 transition-colors">
               <span className="w-1.5 h-1.5 rounded-full bg-gradient-to-br from-amber-300 to-violet-500 flex-shrink-0" />
-              <span className="text-[11px] text-gray-400 font-mono w-16 sm:w-20 flex-shrink-0">{fmtDate(r.date)}</span>
+              <span className="text-[11px] text-gray-500 font-mono w-16 sm:w-20 flex-shrink-0">{fmtDate(r.date)}</span>
               <span className="font-medium text-gray-800 text-sm flex-1 truncate">{r.employee}</span>
-              <span className="text-[11px] text-gray-400 hidden sm:inline">{r.account || "—"}</span>
+              <span className="text-[11px] text-gray-500 hidden sm:inline">{r.account || "—"}</span>
               <span className="font-mono font-semibold text-violet-600 text-sm w-20 sm:w-24 text-right flex-shrink-0">{formatMoney(r.amount)}</span>
               <RowActions r={r} startEdit={startEdit} handleDelete={handleDelete} />
             </div>

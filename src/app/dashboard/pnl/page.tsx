@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { formatMoney, monthLabel } from "@/lib/utils";
+import { createLocalCache } from "@/lib/localCache";
 
 type MonthRow = {
   month: string;
@@ -20,12 +21,15 @@ type PnlData = {
   grand: { sales: number; purchasing: number; expenses: number; salary: number; totalCost: number; profit: number; margin: number };
 };
 
+const pnlCache = createLocalCache<PnlData>("pnl", { ttlMs: 5 * 60_000 });
+
 export default function PnlPage() {
-  const [data, setData] = useState<PnlData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cached0 = pnlCache.get("");
+  const [data, setData] = useState<PnlData | null>(cached0 ?? null);
+  const [loading, setLoading] = useState(!cached0);
 
   useEffect(() => {
-    api.get<PnlData>("/pnl").then(setData).finally(() => setLoading(false));
+    api.get<PnlData>("/pnl").then((d) => { pnlCache.set("", d); setData(d); }).finally(() => setLoading(false));
   }, []);
 
   if (loading) return (
@@ -43,7 +47,7 @@ export default function PnlPage() {
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-600 font-mono">Analysis</p>
         <h1 className="mt-1 text-2xl font-display font-bold uppercase tracking-wide text-gray-900">Profit & Loss</h1>
-        <p className="mt-1 text-sm text-gray-400">Monthly breakdown of sales against all costs — purchasing, expenses and salary.</p>
+        <p className="mt-1 text-sm text-gray-500">Monthly breakdown of sales against all costs — purchasing, expenses and salary.</p>
       </div>
 
       {/* Grand total banner */}
@@ -72,7 +76,7 @@ export default function PnlPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[820px]">
             <thead>
-              <tr className="bg-[#111318] text-white">
+              <tr className="bg-gradient-to-r from-[#1C1F27] via-[#101318] to-[#0B0D12] text-white">
                 {[
                   { label: "Month", align: "text-left" },
                   { label: "Sales", align: "text-right" },
@@ -90,7 +94,7 @@ export default function PnlPage() {
             <tbody className="divide-y divide-gray-50">
               {!data || data.rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-10 text-center text-gray-400 text-sm">
+                  <td colSpan={8} className="px-6 py-10 text-center text-gray-500 text-sm">
                     No data yet. Add sales, purchases, expenses and salary to see P&L.
                   </td>
                 </tr>

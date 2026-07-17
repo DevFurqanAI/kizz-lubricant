@@ -36,13 +36,20 @@ export function monthLabel(key: string): string {
   return `${months[parseInt(m, 10) - 1]} ${y}`;
 }
 
-/** ISO date → YYYY-MM */
-export function monthKey(dateStr: string | null | undefined): string {
-  if (!dateStr) return "Unknown";
-  const m = String(dateStr).match(/^(\d{4})-(\d{2})/);
-  return m ? `${m[1]}-${m[2]}` : "Unknown";
-}
-
 export function cn(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(" ");
+}
+
+/**
+ * Normalize a stored phone/WhatsApp number to international format (digits only,
+ * no `+`). Assumes Pakistan (+92) when no country code is present.
+ * Returns null when there are no usable digits.
+ */
+export function waNumber(raw?: string | null): string | null {
+  if (!raw) return null;
+  let d = raw.replace(/\D/g, "");
+  if (!d) return null;
+  if (d.startsWith("0")) d = "92" + d.slice(1);               // 03xx… → 92 3xx…
+  else if (d.length === 10 && d.startsWith("3")) d = "92" + d; // 3xx… → 92 3xx…
+  return d;
 }

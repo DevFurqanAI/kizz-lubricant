@@ -95,6 +95,16 @@ export function createLocalCache<T>(
       writeRaw(keyFor(searchKey), JSON.stringify(entry));
     },
 
+    /** True when a fresh (non-stale) entry exists for this key. */
+    has(searchKey: string): boolean {
+      return this.get(searchKey) !== undefined;
+    },
+
+    /** Drop a single key (e.g. one customer's detail after an edit). */
+    del(searchKey: string) {
+      removeRaw(keyFor(searchKey));
+    },
+
     /** Call after any create/update/delete so stale totals aren't shown. */
     clear() {
       if (hasStorage) {

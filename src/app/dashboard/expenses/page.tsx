@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { formatMoney, fmtDate } from "@/lib/utils";
 import { getCache, setCache, clearCache } from "@/lib/expenses-cache";
 import { Plus, Search, Fuel, Trash2, X, Pencil, Check } from "lucide-react";
+import { useToast } from "@/components/toast";
+import { useConfirm } from "@/components/confirm";
 
 type Row = { id: number; date: string; detail: string; amount: string };
 type ListResponse = { rows: Row[]; total: number };
@@ -24,6 +26,8 @@ export default function ExpensesPage() {
   const [editSaving, setEditSaving] = useState(false);
 
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   // ── Load with 5-min stale-while-revalidate cache ───────
   const load = useCallback(async (q = "") => {
@@ -67,13 +71,16 @@ export default function ExpensesPage() {
       setShowForm(false);
       clearCache();
       load(search);
+      toast.success("Expense added");
+    } catch {
+      toast.error("Couldn't add expense");
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Delete this entry?")) return;
+    if (!(await confirm({ title: "Delete this expense?", confirmText: "Delete", danger: true }))) return;
     // Optimistic UI: remove instantly, roll back on failure
     const prevRows = rows;
     const prevTotal = total;
@@ -83,9 +90,11 @@ export default function ExpensesPage() {
     try {
       await api.del(`/expenses/${id}`);
       clearCache();
+      toast.success("Expense deleted");
     } catch {
       setRows(prevRows);
       setTotal(prevTotal);
+      toast.error("Couldn't delete expense");
     }
   };
 
@@ -113,8 +122,10 @@ export default function ExpensesPage() {
       clearCache();
       cancelEdit();
       load(search); // reconcile total + ordering from server
+      toast.success("Expense updated");
     } catch {
       setRows(prevRows); // rollback on failure
+      toast.error("Couldn't update expense");
     } finally {
       setEditSaving(false);
     }
@@ -135,7 +146,7 @@ export default function ExpensesPage() {
           <h1 className="mt-1 text-2xl sm:text-3xl font-display font-bold uppercase tracking-wide text-[#0B0D12]">
             Expenses
           </h1>
-          <p className="mt-1 text-sm text-black/40">Plant rent, petrol, repairs and other running costs.</p>
+          <p className="mt-1 text-sm text-black/55">Plant rent, petrol, repairs and other running costs.</p>
         </div>
         <button
           onClick={() => setShowForm((s) => !s)}
@@ -148,9 +159,10 @@ export default function ExpensesPage() {
 
       {/* ── Stat strip ─────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="relative overflow-hidden rounded-2xl bg-[#0B0D12] p-5">
+        <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-br from-[#1C1F27] via-[#101318] to-[#0B0D12] p-5 shadow-[0_16px_40px_-18px_rgba(0,0,0,0.55)]">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
           <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-[#D97706]/10 blur-2xl" />
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/35 font-mono">Total cost</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/55 font-mono">Total cost</p>
           <p className="mt-2 text-2xl font-mono font-bold text-[#F59E0B] tabular-nums">{formatMoney(total)}</p>
           <div className="mt-3 flex gap-[3px]">
             {[...Array(24)].map((_, i) => (
@@ -159,14 +171,14 @@ export default function ExpensesPage() {
           </div>
         </div>
         <div className="rounded-2xl bg-white border border-black/[0.06] p-5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35 font-mono">Entries</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/50 font-mono">Entries</p>
           <p className="mt-2 text-2xl font-mono font-bold text-[#0B0D12] tabular-nums">{rows.length}</p>
-          <p className="mt-3 text-xs text-black/35">{search ? `matching "${search}"` : "all recorded so far"}</p>
+          <p className="mt-3 text-xs text-black/50">{search ? `matching "${search}"` : "all recorded so far"}</p>
         </div>
         <div className="rounded-2xl bg-white border border-black/[0.06] p-5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35 font-mono">Average / entry</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/50 font-mono">Average / entry</p>
           <p className="mt-2 text-2xl font-mono font-bold text-[#0B0D12] tabular-nums">{formatMoney(average)}</p>
-          <p className="mt-3 text-xs text-black/35">based on current view</p>
+          <p className="mt-3 text-xs text-black/50">based on current view</p>
         </div>
       </div>
 
@@ -184,7 +196,7 @@ export default function ExpensesPage() {
             </h3>
             <button
               onClick={() => setShowForm(false)}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-black/30 hover:text-black hover:bg-black/5"
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-black/50 hover:text-black hover:bg-black/5"
               aria-label="Close"
             >
               <X className="w-4 h-4" />
@@ -197,7 +209,7 @@ export default function ExpensesPage() {
               { key: "amount", label: "Amount (Rs) *", type: "number" },
             ].map(({ key, label, type }) => (
               <div key={key}>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-black/40 mb-1.5">
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-black/55 mb-1.5">
                   {label}
                 </label>
                 <input
@@ -243,7 +255,7 @@ export default function ExpensesPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-[#0B0D12] text-white">
+              <tr className="bg-gradient-to-r from-[#1C1F27] via-[#101318] to-[#0B0D12] text-white">
                 {["Date", "Detail", "Amount", ""].map((h) => (
                   <th
                     key={h}
@@ -270,7 +282,7 @@ export default function ExpensesPage() {
                   <tr>
                     <td colSpan={4} className="px-6 py-14 text-center">
                       <Fuel className="w-8 h-8 mx-auto text-black/15 mb-2" strokeWidth={1.5} />
-                      <p className="text-black/40 text-sm">No entries yet. Add your first expense above.</p>
+                      <p className="text-black/55 text-sm">No entries yet. Add your first expense above.</p>
                     </td>
                   </tr>
                 )
@@ -316,7 +328,7 @@ export default function ExpensesPage() {
                               </button>
                               <button
                                 onClick={cancelEdit}
-                                className="w-7 h-7 flex items-center justify-center rounded-lg text-black/40 hover:bg-black/5"
+                                className="w-7 h-7 flex items-center justify-center rounded-lg text-black/55 hover:bg-black/5"
                                 aria-label="Cancel"
                               >
                                 <X className="w-4 h-4" strokeWidth={2.5} />
@@ -326,7 +338,7 @@ export default function ExpensesPage() {
                         </>
                       ) : (
                         <>
-                          <td className="px-4 py-3.5 text-black/45 text-xs font-mono whitespace-nowrap">{fmtDate(r.date)}</td>
+                          <td className="px-4 py-3.5 text-black/55 text-xs font-mono whitespace-nowrap">{fmtDate(r.date)}</td>
                           <td className="px-4 py-3.5 text-black/80">{r.detail}</td>
                           <td className="px-4 py-3.5 text-right font-mono font-semibold text-[#D97706] tabular-nums">
                             {formatMoney(r.amount)}
@@ -335,14 +347,14 @@ export default function ExpensesPage() {
                             <div className="flex items-center justify-end gap-1">
                               <button
                                 onClick={() => startEdit(r)}
-                                className="w-7 h-7 flex items-center justify-center rounded-lg text-black/15 group-hover:text-black/40 hover:!text-[#D97706] transition-colors"
+                                className="w-7 h-7 flex items-center justify-center rounded-lg text-black/15 group-hover:text-black/55 hover:!text-[#D97706] transition-colors"
                                 aria-label="Edit entry"
                               >
                                 <Pencil className="w-4 h-4" strokeWidth={2} />
                               </button>
                               <button
                                 onClick={() => handleDelete(r.id)}
-                                className="w-7 h-7 flex items-center justify-center rounded-lg text-black/15 group-hover:text-black/40 hover:!text-rose-500 transition-colors"
+                                className="w-7 h-7 flex items-center justify-center rounded-lg text-black/15 group-hover:text-black/55 hover:!text-rose-500 transition-colors"
                                 aria-label="Delete entry"
                               >
                                 <Trash2 className="w-4 h-4" strokeWidth={2} />
@@ -358,7 +370,7 @@ export default function ExpensesPage() {
             {rows.length > 0 && (
               <tfoot>
                 <tr className="border-t-2 border-black/[0.06] bg-black/[0.015]">
-                  <td colSpan={2} className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-black/45">
+                  <td colSpan={2} className="px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-black/55">
                     Total
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono font-bold text-[#D97706] tabular-nums">
@@ -382,7 +394,7 @@ export default function ExpensesPage() {
           ? (
             <div className="bg-white rounded-2xl border border-black/[0.06] px-6 py-12 text-center">
               <Fuel className="w-8 h-8 mx-auto text-black/15 mb-2" strokeWidth={1.5} />
-              <p className="text-black/40 text-sm">No entries yet.</p>
+              <p className="text-black/55 text-sm">No entries yet.</p>
             </div>
           )
           : rows.map((r) => {
@@ -433,7 +445,7 @@ export default function ExpensesPage() {
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-black/85 text-sm truncate">{r.detail}</p>
-                  <p className="text-black/35 text-[11px] font-mono mt-0.5">{fmtDate(r.date)}</p>
+                  <p className="text-black/50 text-[11px] font-mono mt-0.5">{fmtDate(r.date)}</p>
                 </div>
                 <p className="font-mono font-semibold text-[#D97706] text-sm tabular-nums flex-shrink-0">
                   {formatMoney(r.amount)}
@@ -457,7 +469,7 @@ export default function ExpensesPage() {
           })}
 
         {rows.length > 0 && (
-          <div className="flex items-center justify-between px-4 py-3.5 rounded-2xl bg-[#0B0D12]">
+          <div className="flex items-center justify-between px-4 py-3.5 rounded-2xl bg-gradient-to-r from-[#1C1F27] to-[#0B0D12]">
             <p className="text-[11px] font-bold uppercase tracking-wider text-white/50">Total</p>
             <p className="font-mono font-bold text-[#F59E0B] tabular-nums">{formatMoney(total)}</p>
           </div>

@@ -6,11 +6,11 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatMoney, toNum, fmtDate } from "@/lib/utils";
-import type { Customer, CustomerEntry } from "@/db/schema";
-import { FileSpreadsheet } from "lucide-react";
-
-type FullCustomer = Customer & { entries: CustomerEntry[] };
-const customerCache = new Map<string, FullCustomer>();
+import type { CustomerEntry } from "@/db/schema";
+import { FileSpreadsheet, MessageCircle } from "lucide-react";
+import { customerDetailCache as customerCache, type FullCustomer } from "@/lib/customercache";
+import { useToast } from "@/components/toast";
+import { useConfirm } from "@/components/confirm";
 
 export default function CustomerLedgerPage() {
   const { id } = useParams<{ id: string }>();
@@ -35,6 +35,10 @@ export default function CustomerLedgerPage() {
     date: "", product: "", packing: "", unit: "", qty: "", rate: "", debit: "", credit: "", account: "",
   });
   const [editSaving, setEditSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const load = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -80,13 +84,16 @@ export default function CustomerLedgerPage() {
       });
       setForm({ date: new Date().toISOString().slice(0, 10), product: "", packing: "", unit: "", qty: "", rate: "", debit: "", credit: "", account: "" });
       setShowForm(false);
+      toast.success("Entry added");
+    } catch {
+      toast.error("Couldn't add entry");
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (entryId: number) => {
-    if (!confirm("Delete this entry?")) return;
+    if (!(await confirm({ title: "Delete this entry?", confirmText: "Delete", danger: true }))) return;
     const prev = customer;
     setCustomer((c) => c ? { ...c, entries: c.entries.filter(e => e.id !== entryId) } : c);
     try {
@@ -96,8 +103,10 @@ export default function CustomerLedgerPage() {
         if (next) customerCache.set(id, next);
         return next;
       });
+      toast.success("Entry deleted");
     } catch {
       setCustomer(prev);
+      toast.error("Couldn't delete entry");
     }
   };
 
@@ -150,65 +159,71 @@ export default function CustomerLedgerPage() {
         return next;
       });
       setEditId(null);
+      toast.success("Entry updated");
+    } catch {
+      toast.error("Couldn't update entry");
     } finally {
       setEditSaving(false);
     }
   };
 
-  const handleExportCSV = () => {
+  const shareOnWhatsApp = async () => {
+    if (!customer || sharing) return;
+    if ((customer.entries ?? []).length === 0) {
+      toast.error("No ledger entries to send");
+      return;
+    }
+    if (!customer.whatsapp && !customer.phone) {
+      toast.error("No WhatsApp/phone number on file");
+      return;
+    }
+    setSharing(true);
+    try {
+      // The server builds the Excel ledger, uploads it, and delivers it as a
+      // WhatsApp document via WasenderApi — no wa.me hand-off needed.
+      const res = await api.post<{ ok: boolean; to: string }>(`/customers/${id}/send-whatsapp`, {});
+      toast.success(`Ledger sent on WhatsApp to +${res.to}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't send on WhatsApp");
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const exportLedger = async () => {
     if (!customer) return;
-    const entries = customer.entries ?? [];
+    setExporting(true);
+    try {
+      const { buildLedgerBlob } = await import("@/lib/ledger-xlsx");
+      const blob = await buildLedgerBlob(customer);
+      const safeName = customer.name.replace(/[^a-z0-9]+/gi, "_");
+      const filename = `${safeName}_ledger_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const file = new File([blob], filename, { type: blob.type });
 
-    const headers = ["Date", "Product", "Packing", "Unit", "Qty", "Rate", "Debit", "Credit", "Balance", "Account / Note"];
+      // On phones, open the native share sheet \u2014 it offers both "Save to
+      // Files" and opening straight in Google Sheets / Drive, in one place.
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: filename });
+          return;
+        } catch (err) {
+          if ((err as Error)?.name === "AbortError") return; // user dismissed
+          // any other failure \u2192 fall through to a plain download
+        }
+      }
 
-    const rows: (string | number)[][] = entries.map((e) => [
-      fmtDate(e.date),
-      e.product || "",
-      e.packing || "",
-      e.unit || "",
-      e.qty ? Number(e.qty) : "",
-      e.rate ? Number(toNum(e.rate)) : "",
-      toNum(e.debit) || "",
-      toNum(e.credit) || "",
-      toNum(e.balance),
-      e.account || "",
-    ]);
-
-    const totalDebit = entries.reduce((a, e) => a + toNum(e.debit), 0);
-    const totalCredit = entries.reduce((a, e) => a + toNum(e.credit), 0);
-    const lastEntry = entries[entries.length - 1];
-    const currentBalance = lastEntry ? toNum(lastEntry.balance) : 0;
-
-    rows.push(["", "", "", "", "", "", totalDebit, totalCredit, currentBalance, "TOTAL"]);
-
-    const escapeCell = (val: string | number) => {
-      const str = String(val);
-      if (/[",\n]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
-      return str;
-    };
-
-    const csvContent =
-      "\uFEFF" +
-      [headers, ...rows].map((row) => row.map(escapeCell).join(",")).join("\r\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const safeName = customer.name.replace(/[^a-z0-9]+/gi, "_");
-    const fileName = `${safeName}_ledger_${new Date().toISOString().slice(0, 10)}.csv`;
-
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const url = URL.createObjectURL(blob);
-
-    if (isIOS) {
-      window.open(url, "_blank");
-    } else {
+      // Desktop (or no share support): download the file to the device.
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = fileName;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } finally {
+      setExporting(false);
     }
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
   };
 
   if (loading) return (
@@ -228,7 +243,7 @@ export default function CustomerLedgerPage() {
     </div>
   );
 
-  if (!customer) return <div className="text-gray-400 text-sm">Customer not found.</div>;
+  if (!customer) return <div className="text-gray-500 text-sm">Customer not found.</div>;
 
   const entries = customer.entries ?? [];
   const lastEntry = entries[entries.length - 1];
@@ -238,7 +253,7 @@ export default function CustomerLedgerPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 text-sm text-gray-400">
+      <div className="flex items-center gap-2 text-sm text-gray-500">
         <Link href="/dashboard/customers" className="hover:text-amber-600 transition-colors">Customers</Link>
         <span>/</span>
         <span className="text-gray-700 font-medium">{customer.name}</span>
@@ -259,11 +274,11 @@ export default function CustomerLedgerPage() {
               </div>
             </div>
             <div className="text-right">
-              <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">Current Balance</p>
-              <p className={`font-mono text-2xl font-bold mt-0.5 ${currentBalance > 0 ? "text-amber-600" : currentBalance < 0 ? "text-emerald-600" : "text-gray-400"}`}>
+              <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold">Current Balance</p>
+              <p className={`font-mono text-2xl font-bold mt-0.5 ${currentBalance > 0 ? "text-amber-600" : currentBalance < 0 ? "text-emerald-600" : "text-gray-500"}`}>
                 {formatMoney(currentBalance)}
               </p>
-              <p className="text-xs text-gray-400 mt-0.5">
+              <p className="text-xs text-gray-500 mt-0.5">
                 {currentBalance > 0 ? "Customer owes" : currentBalance < 0 ? "Advance paid" : "Settled"}
               </p>
             </div>
@@ -271,15 +286,15 @@ export default function CustomerLedgerPage() {
 
           <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-gray-100">
             <div>
-              <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">Total Debit</p>
+              <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold">Total Debit</p>
               <p className="font-mono font-semibold text-amber-600 mt-1">{formatMoney(totalDebit)}</p>
             </div>
             <div>
-              <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">Total Credit</p>
+              <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold">Total Credit</p>
               <p className="font-mono font-semibold text-emerald-600 mt-1">{formatMoney(totalCredit)}</p>
             </div>
             <div>
-              <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">Transactions</p>
+              <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold">Transactions</p>
               <p className="font-mono font-semibold text-gray-700 mt-1">{entries.length}</p>
             </div>
           </div>
@@ -288,14 +303,22 @@ export default function CustomerLedgerPage() {
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="font-display font-semibold uppercase tracking-wide text-gray-700">Ledger</h2>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <button
-            onClick={handleExportCSV}
-            disabled={entries.length === 0}
+            onClick={exportLedger}
+            disabled={entries.length === 0 || exporting}
             className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             <FileSpreadsheet className="w-4 h-4" strokeWidth={2} />
-            Export CSV
+            {exporting ? "Preparing…" : "Export Excel"}
+          </button>
+          <button
+            onClick={shareOnWhatsApp}
+            disabled={entries.length === 0 || sharing}
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-emerald-200 text-emerald-700 text-sm font-semibold rounded-xl hover:bg-emerald-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <MessageCircle className="w-4 h-4" strokeWidth={2} />
+            {sharing ? "Sending…" : "WhatsApp"}
           </button>
           <button
             onClick={() => setShowForm((s) => !s)}
@@ -322,7 +345,7 @@ export default function CustomerLedgerPage() {
               { key: "account", label: "Account / Note", type: "text" },
             ].map(({ key, label, type }) => (
               <div key={key}>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">{label}</label>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">{label}</label>
                 <input
                   type={type}
                   value={(form as Record<string, string>)[key]}
@@ -333,7 +356,7 @@ export default function CustomerLedgerPage() {
               </div>
             ))}
           </div>
-          <p className="text-xs text-gray-400 mt-3">
+          <p className="text-xs text-gray-500 mt-3">
             Tip: Enter Qty + Rate and click the Rate field — Debit auto-calculates.
           </p>
           <div className="flex gap-3 mt-4">
@@ -351,7 +374,7 @@ export default function CustomerLedgerPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[900px]">
             <thead>
-              <tr className="bg-[#111318] text-white">
+              <tr className="bg-gradient-to-r from-[#1C1F27] via-[#101318] to-[#0B0D12] text-white">
                 {["Date", "Product", "Packing", "Unit", "Qty", "Rate", "Debit", "Credit", "Balance", "Account / Note", ""].map((h) => (
                   <th key={h} className={`py-3 px-4 text-[11px] font-semibold uppercase tracking-wider ${h === "Debit" || h === "Credit" || h === "Balance" || h === "Rate" ? "text-right" : "text-left"}`}>
                     {h}
@@ -362,7 +385,7 @@ export default function CustomerLedgerPage() {
             <tbody className="divide-y divide-gray-50">
               {entries.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="px-6 py-10 text-center text-gray-400 text-sm">
+                  <td colSpan={11} className="px-6 py-10 text-center text-gray-500 text-sm">
                     No entries yet. Click <b>+ Add Entry</b> to record the first transaction.
                   </td>
                 </tr>
@@ -402,7 +425,7 @@ export default function CustomerLedgerPage() {
                       <td className="px-4 py-2 whitespace-nowrap">
                         <div className="flex items-center gap-4">
                           <button onClick={() => saveEdit(e.id)} disabled={editSaving} className="text-emerald-600 font-bold disabled:opacity-40">✓</button>
-                          <button onClick={cancelEdit} className="text-gray-400">×</button>
+                          <button onClick={cancelEdit} className="text-gray-500">×</button>
                         </div>
                       </td>
                     </tr>
@@ -416,16 +439,16 @@ export default function CustomerLedgerPage() {
                   <tr key={e.id} className={`hover:bg-gray-50/50 transition-colors ${isCreditRow ? "bg-emerald-50/20" : ""}`}>
                     <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{fmtDate(e.date)}</td>
                     <td className="px-4 py-3 font-medium text-gray-800">{e.product || <span className="text-gray-300">—</span>}</td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">{e.packing || "—"}</td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">{e.unit || "—"}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{e.packing || "—"}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{e.unit || "—"}</td>
                     <td className="px-4 py-3 text-gray-600 text-xs">{e.qty ? Number(e.qty).toLocaleString() : "—"}</td>
                     <td className="px-4 py-3 text-right text-gray-500 text-xs font-mono">{e.rate ? formatMoney(e.rate) : "—"}</td>
                     <td className="px-4 py-3 text-right font-mono text-amber-600 font-semibold">{toNum(e.debit) > 0 ? formatMoney(e.debit) : <span className="text-gray-200">—</span>}</td>
                     <td className="px-4 py-3 text-right font-mono text-emerald-600 font-semibold">{toNum(e.credit) > 0 ? formatMoney(e.credit) : <span className="text-gray-200">—</span>}</td>
-                    <td className={`px-4 py-3 text-right font-mono font-bold text-[13px] ${bal > 0 ? "text-amber-600" : bal < 0 ? "text-emerald-600" : "text-gray-400"}`}>
+                    <td className={`px-4 py-3 text-right font-mono font-bold text-[13px] ${bal > 0 ? "text-amber-600" : bal < 0 ? "text-emerald-600" : "text-gray-500"}`}>
                       {formatMoney(bal)}
                     </td>
-                    <td className="px-4 py-3 text-gray-400 text-xs max-w-[180px] truncate">{e.account || "—"}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs max-w-[180px] truncate">{e.account || "—"}</td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-4">
                         <button onClick={() => startEdit(e)} className="text-gray-300 hover:text-amber-600 transition-colors" title="Edit entry">✎</button>
@@ -442,7 +465,7 @@ export default function CustomerLedgerPage() {
                   <td colSpan={6} className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-500">Totals</td>
                   <td className="px-4 py-3 text-right font-mono font-bold text-amber-600">{formatMoney(totalDebit)}</td>
                   <td className="px-4 py-3 text-right font-mono font-bold text-emerald-600">{formatMoney(totalCredit)}</td>
-                  <td className={`px-4 py-3 text-right font-mono font-bold text-[14px] ${currentBalance > 0 ? "text-amber-600" : currentBalance < 0 ? "text-emerald-600" : "text-gray-400"}`}>
+                  <td className={`px-4 py-3 text-right font-mono font-bold text-[14px] ${currentBalance > 0 ? "text-amber-600" : currentBalance < 0 ? "text-emerald-600" : "text-gray-500"}`}>
                     {formatMoney(currentBalance)}
                   </td>
                   <td colSpan={2} />

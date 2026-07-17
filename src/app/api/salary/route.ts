@@ -14,10 +14,12 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const search = req.nextUrl.searchParams.get("search") ?? "";
-    const rows = search
-      ? await db.select().from(salary).where(ilike(salary.employee, `%${search}%`)).orderBy(desc(salary.date), desc(salary.id))
-      : await db.select().from(salary).orderBy(desc(salary.date), desc(salary.id));
-    const [{ total }] = await db.select({ total: sql<string>`COALESCE(SUM(amount),0)` }).from(salary);
+    const [rows, [{ total }]] = await Promise.all([
+      search
+        ? db.select().from(salary).where(ilike(salary.employee, `%${search}%`)).orderBy(desc(salary.date), desc(salary.id))
+        : db.select().from(salary).orderBy(desc(salary.date), desc(salary.id)),
+      db.select({ total: sql<string>`COALESCE(SUM(amount),0)` }).from(salary),
+    ]);
     return NextResponse.json({ rows, total: Number(total) });
   } catch (err) {
     console.error("GET /salary failed:", err);
