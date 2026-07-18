@@ -19,10 +19,17 @@ const plexMono = IBM_Plex_Mono({
 const SITE_TITLE = "Kizz Lubricants";
 const SITE_DESC = "Business ledger admin panel for Kizz Lubricants";
 
+// Absolute base for og:image etc. `.env` is gitignored, so NEXTAUTH_URL isn't
+// present at build on Vercel — fall back to Vercel's own build-time domain vars
+// so the preview image never resolves to localhost in production.
+const siteUrl =
+  process.env.NEXTAUTH_URL ||
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : undefined) ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined) ||
+  "http://localhost:3000";
+
 export const metadata: Metadata = {
-  // Absolute base for og:image etc. In production this MUST be the real https
-  // domain (via NEXTAUTH_URL) or link previews get a broken image URL.
-  metadataBase: new URL(process.env.NEXTAUTH_URL ?? "http://localhost:3000"),
+  metadataBase: new URL(siteUrl),
   title: SITE_TITLE,
   description: SITE_DESC,
   icons: {
@@ -36,7 +43,7 @@ export const metadata: Metadata = {
     siteName: SITE_TITLE,
     title: SITE_TITLE,
     description: SITE_DESC,
-    images: [{ url: "/og-image.png", width: 1920, height: 1080, alt: SITE_TITLE }],
+    images: [{ url: "/og-image.png", width: 1000, height: 563, alt: SITE_TITLE }],
   },
   twitter: {
     card: "summary_large_image",
