@@ -24,13 +24,20 @@ export async function GET(req: NextRequest) {
     const col = SORT[sort as keyof typeof SORT];
     const order = dir === "asc" ? [asc(col), asc(expenses.id)] : [desc(col), desc(expenses.id)];
 
-    const [rows, [{ total }], [{ count }]] = await Promise.all([
+    const [rows, [{ total, months }], [{ count }]] = await Promise.all([
       db.select().from(expenses).where(where).orderBy(...order).limit(limit).offset(offset),
-      db.select({ total: sql<string>`COALESCE(SUM(amount),0)` }).from(expenses).where(where),
+      db
+        .select({
+          total: sql<string>`COALESCE(SUM(amount),0)`,
+          // Distinct calendar months with any expense — the denominator for Average / month.
+          months: sql<string>`COUNT(DISTINCT TO_CHAR(date, 'YYYY-MM'))`,
+        })
+        .from(expenses)
+        .where(where),
       db.select({ count: sql<string>`COUNT(*)` }).from(expenses).where(where),
     ]);
 
-    return NextResponse.json({ rows, total: Number(total), count: Number(count), page, limit });
+    return NextResponse.json({ rows, total: Number(total), months: Number(months), count: Number(count), page, limit });
   } catch (err) {
     console.error("GET /expenses failed:", err);
     return NextResponse.json({ error: "Failed to load expenses." }, { status: 500 });

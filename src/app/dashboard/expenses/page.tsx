@@ -14,7 +14,7 @@ import { SearchInput } from "@/components/search-input";
 import { validateAmountEntry, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 type Row = { id: number; date: string; detail: string; amount: string };
-type ListResponse = { rows: Row[]; total: number; count: number };
+type ListResponse = { rows: Row[]; total: number; months: number; count: number };
 
 const PAGE_SIZE = 50;
 const keyFor = (q: string, s: Sort, p: number) => `${q || "__all__"}|${s.col}|${s.dir}|p${p}`;
@@ -23,6 +23,7 @@ export default function ExpensesPage() {
   const initSort: Sort = { col: "date", dir: "desc" };
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
+  const [months, setMonths] = useState(0);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<Sort>(initSort);
@@ -47,7 +48,7 @@ export default function ExpensesPage() {
   const load = useCallback(async (q: string, p: number, s: Sort, opts?: { silent?: boolean }) => {
     const cached = getCache<ListResponse>(keyFor(q, s, p));
     if (cached) {
-      setRows(cached.rows); setTotal(cached.total); setCount(cached.count);
+      setRows(cached.rows); setTotal(cached.total); setMonths(cached.months ?? 0); setCount(cached.count);
       setLoading(false);
     } else if (!opts?.silent) {
       setLoading(true);
@@ -55,7 +56,7 @@ export default function ExpensesPage() {
     if (!opts?.silent) setError(false);
     try {
       const data = await api.get<ListResponse>(`/expenses?search=${encodeURIComponent(q)}&page=${p}&limit=${PAGE_SIZE}&sort=${s.col}&dir=${s.dir}`);
-      setRows(data.rows); setTotal(data.total); setCount(data.count);
+      setRows(data.rows); setTotal(data.total); setMonths(data.months ?? 0); setCount(data.count);
       setCache(keyFor(q, s, p), data);
     } catch {
       if (!cached && !opts?.silent) setError(true);
@@ -155,8 +156,8 @@ export default function ExpensesPage() {
     }
   };
 
-  // Average is over the whole (filtered) dataset, not just the current page.
-  const average = useMemo(() => (count ? total / count : 0), [count, total]);
+  // Average monthly spend over the whole (filtered) dataset, not just the current page.
+  const avgPerMonth = useMemo(() => (months ? total / months : 0), [months, total]);
 
   return (
     <div className="space-y-6 pb-10">
@@ -187,9 +188,9 @@ export default function ExpensesPage() {
           <p className="mt-2.5 text-xs text-muted">{search ? `matching "${search}"` : "all recorded so far"}</p>
         </div>
         <div className="card p-5">
-          <p className="eyebrow">Average / entry</p>
-          <p className="mt-2.5 text-[26px] leading-none font-mono font-semibold text-ink tabular-nums">{formatMoney(average)}</p>
-          <p className="mt-2.5 text-xs text-muted">{search ? "across matches" : "across all entries"}</p>
+          <p className="eyebrow">Average / month</p>
+          <p className="mt-2.5 text-[26px] leading-none font-mono font-semibold text-ink tabular-nums">{formatMoney(avgPerMonth)}</p>
+          <p className="mt-2.5 text-xs text-muted">{months ? `over ${months.toLocaleString()} month${months === 1 ? "" : "s"}${search ? " of matches" : ""}` : "no data yet"}</p>
         </div>
       </div>
 
