@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
 import { salary } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { validateSalary, hasErrors, firstError } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -24,15 +25,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const b = await req.json();
+    const errors = validateSalary(b, "update");
+    if (hasErrors(errors)) return NextResponse.json({ error: firstError(errors), fields: errors }, { status: 400 });
     const update: Record<string, unknown> = {};
     if ("date" in b) update.date = b.date;
     if ("employee" in b) update.employee = b.employee;
     if ("account" in b) update.account = b.account ?? null;
-    if ("amount" in b) {
-      const n = Number(b.amount);
-      if (!Number.isFinite(n)) return NextResponse.json({ error: "amount must be a number." }, { status: 400 });
-      update.amount = String(n);
-    }
+    if ("amount" in b) update.amount = String(Number(b.amount));
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ error: "No editable fields provided." }, { status: 400 });
     }

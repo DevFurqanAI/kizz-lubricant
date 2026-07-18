@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { customerEntries } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { recalcBalances } from "@/lib/ledger";
+import { validateLedgerEntry, hasErrors, firstError } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,8 @@ export async function PATCH(
     const customerId = Number(params.id);
     const b = await req.json();
 
-    if (!b.date) return NextResponse.json({ error: "date is required" }, { status: 400 });
+    const errors = validateLedgerEntry(b, "update");
+    if (hasErrors(errors)) return NextResponse.json({ error: firstError(errors), fields: errors }, { status: 400 });
 
     // Whitelist editable columns only — never trust the raw body to set id,
     // customerId, balance or createdAt. balance is recomputed below regardless.

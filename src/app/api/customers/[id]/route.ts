@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
 import { customers, customerEntries } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
+import { validateCustomer, hasErrors, firstError } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -34,13 +35,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = await req.json();
+    const errors = validateCustomer(body, "update");
+    if (hasErrors(errors)) return NextResponse.json({ error: firstError(errors), fields: errors }, { status: 400 });
     const update: Record<string, unknown> = {};
     for (const k of EDITABLE) if (k in body) update[k] = body[k] ?? null;
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ error: "No editable fields provided." }, { status: 400 });
-    }
-    if ("name" in update && !update.name) {
-      return NextResponse.json({ error: "name cannot be empty." }, { status: 400 });
     }
     const [row] = await db.update(customers).set(update).where(eq(customers.id, Number(params.id))).returning();
     return NextResponse.json(row);

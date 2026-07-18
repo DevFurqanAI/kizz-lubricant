@@ -12,6 +12,7 @@ import { Pagination } from "@/components/pagination";
 import { EmptyState, ErrorState } from "@/components/states";
 import { SearchInput } from "@/components/search-input";
 import { Wallet, ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react";
+import { validateSalary, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 type Row = { id: number; date: string; employee: string; amount: string; account: string };
 type SalaryData = { rows: Row[]; total: number; count: number };
@@ -98,6 +99,7 @@ export default function SalaryPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), employee: "", amount: "", account: "" });
+  const [formErrors, setFormErrors] = useState<FieldErrors>({});
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<EditFormT>({ date: "", employee: "", amount: "", account: "" });
   const [viewStyle, setViewStyle] = useState<ViewStyle>("table");
@@ -142,7 +144,9 @@ export default function SalaryPage() {
   const goPage = (p: number) => { setPage(p); applyView(search, p, dir); };
 
   const handleSave = async () => {
-    if (!form.date || !form.employee || !form.amount) return;
+    const errs = validateSalary(form);
+    if (hasErrors(errs)) { setFormErrors(errs); toast.error(firstError(errs)!); return; }
+    setFormErrors({});
     setSaving(true);
     try {
       await api.post<Row>("/salary", { ...form, amount: Number(form.amount) });
@@ -169,7 +173,8 @@ export default function SalaryPage() {
 
   const startEdit = (r: Row) => { setEditId(r.id); setEditForm({ date: r.date.slice(0, 10), employee: r.employee, amount: r.amount, account: r.account ?? "" }); };
   const saveEdit = async (id: number) => {
-    if (!editForm.date || !editForm.employee || !editForm.amount) return;
+    const errs = validateSalary(editForm);
+    if (hasErrors(errs)) { toast.error(firstError(errs)!); return; }
     const prevRows = rows;
     setRows(rs => rs.map(r => r.id === id ? { ...r, ...editForm } : r));
     setEditId(null);
@@ -206,7 +211,7 @@ export default function SalaryPage() {
           <h3 className="font-semibold text-ink mb-4">New Payment</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[{ key: "date", label: "Date", type: "date" }, { key: "employee", label: "Employee *", type: "text" }, { key: "amount", label: "Amount (Rs) *", type: "number" }, { key: "account", label: "Paid Via / Account", type: "text" }].map(({ key, label, type }) => (
-              <div key={key}><label className="label">{label}</label><input type={type} value={(form as Record<string, string>)[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} className="input py-2.5 text-sm" /></div>
+              <div key={key}><label className="label">{label}</label><input type={type} value={(form as Record<string, string>)[key]} onChange={e => { setForm(f => ({ ...f, [key]: e.target.value })); setFormErrors(er => ({ ...er, [key]: "" })); }} className={`input py-2.5 text-sm${formErrors[key] ? " ring-1 ring-danger" : ""}`} />{formErrors[key] && <p className="mt-1 text-xs text-danger">{formErrors[key]}</p>}</div>
             ))}
           </div>
           <div className="flex gap-3 mt-4">

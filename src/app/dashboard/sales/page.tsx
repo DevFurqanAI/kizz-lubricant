@@ -12,11 +12,14 @@ import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
 import { SortHeader, type Sort, nextSort } from "@/components/sort-header";
 import { SearchInput } from "@/components/search-input";
 import { TrendingUp } from "lucide-react";
+import { validateSale, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 type SaleRow = {
   id: number;
   date: string;
   detail: string;
+  packing: string | null;
+  unit: string | null;
   qty: string | null;
   rate: string | null;
   amount: string;
@@ -43,9 +46,10 @@ export default function SalesPage() {
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), detail: "", qty: "", rate: "", amount: "", customerId: "" });
+  const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), detail: "", packing: "", unit: "", qty: "", rate: "", amount: "", customerId: "" });
+  const [formErrors, setFormErrors] = useState<FieldErrors>({});
   const [editId, setEditId] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState({ date: "", detail: "", qty: "", rate: "", amount: "" });
+  const [editForm, setEditForm] = useState({ date: "", detail: "", packing: "", unit: "", qty: "", rate: "", amount: "" });
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toast = useToast();
@@ -103,12 +107,16 @@ export default function SalesPage() {
   };
 
   const handleSave = async () => {
-    if (!form.date || !form.detail || !form.amount) return;
+    const errs = validateSale(form);
+    if (hasErrors(errs)) { setFormErrors(errs); toast.error(firstError(errs)!); return; }
+    setFormErrors({});
     setSaving(true);
     try {
       await api.post<SaleRow>("/sales", {
         date: form.date,
         detail: form.detail,
+        packing: form.packing || null,
+        unit: form.unit || null,
         qty: form.qty ? Number(form.qty) : null,
         rate: form.rate ? Number(form.rate) : null,
         amount: Number(form.amount),
@@ -116,7 +124,7 @@ export default function SalesPage() {
       });
       // The linked customer's ledger just changed — drop its cached detail.
       if (form.customerId) customerDetailCache.delete(form.customerId);
-      setForm({ date: new Date().toISOString().slice(0, 10), detail: "", qty: "", rate: "", amount: "", customerId: "" });
+      setForm({ date: new Date().toISOString().slice(0, 10), detail: "", packing: "", unit: "", qty: "", rate: "", amount: "", customerId: "" });
       setShowForm(false);
       salesCache.clear();
       setPage(1);
@@ -145,7 +153,7 @@ export default function SalesPage() {
 
   const startEdit = (r: SaleRow) => {
     setEditId(r.id);
-    setEditForm({ date: r.date.slice(0, 10), detail: r.detail, qty: r.qty ? String(r.qty) : "", rate: r.rate ? String(r.rate) : "", amount: r.amount });
+    setEditForm({ date: r.date.slice(0, 10), detail: r.detail, packing: r.packing ?? "", unit: r.unit ?? "", qty: r.qty ? String(r.qty) : "", rate: r.rate ? String(r.rate) : "", amount: r.amount });
   };
 
   const handleEditAutoAmount = () => {
@@ -154,13 +162,14 @@ export default function SalesPage() {
   };
 
   const saveEdit = async (id: number) => {
-    if (!editForm.date || !editForm.detail || !editForm.amount) return;
+    const errs = validateSale(editForm);
+    if (hasErrors(errs)) { toast.error(firstError(errs)!); return; }
     const prevRows = rows;
     const edited = rows.find(r => r.id === id);
     setRows(rs => rs.map(r => r.id === id ? { ...r, ...editForm } as SaleRow : r));
     setEditId(null);
     try {
-      await api.patch(`/sales/${id}`, { ...editForm, qty: editForm.qty ? Number(editForm.qty) : null, rate: editForm.rate ? Number(editForm.rate) : null, amount: Number(editForm.amount) });
+      await api.patch(`/sales/${id}`, { ...editForm, packing: editForm.packing || null, unit: editForm.unit || null, qty: editForm.qty ? Number(editForm.qty) : null, rate: editForm.rate ? Number(editForm.rate) : null, amount: Number(editForm.amount) });
       if (edited?.customerId) customerDetailCache.delete(String(edited.customerId));
       salesCache.clear();
       load(search, page, sort, { silent: true });
@@ -203,24 +212,33 @@ export default function SalesPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { key: "date", label: "Date", type: "date" },
               { key: "detail", label: "Detail *", type: "text" },
+              { key: "packing", label: "Packing", type: "text" },
+              { key: "unit", label: "Unit", type: "text" },
               { key: "qty", label: "Qty", type: "number" },
               { key: "rate", label: "Rate (Rs)", type: "number" },
-              { key: "amount", label: "Amount (Rs) *", type: "number" },
             ].map(({ key, label, type }) => (
               <div key={key}>
                 <label className="label">{label}</label>
                 <input type={type} value={(form as Record<string, string>)[key]}
-                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                  onChange={e => { setForm(f => ({ ...f, [key]: e.target.value })); setFormErrors(er => ({ ...er, [key]: "" })); }}
                   onBlur={key === "rate" || key === "qty" ? handleAutoAmount : undefined}
-                  className="input py-2.5 text-sm" />
+                  className={`input py-2.5 text-sm${formErrors[key] ? " ring-1 ring-danger" : ""}`} />
+                {formErrors[key] && <p className="mt-1 text-xs text-danger">{formErrors[key]}</p>}
               </div>
             ))}
+            <div>
+              <label className="label">Amount (Rs) *</label>
+              <input type="number" value={form.amount} readOnly tabIndex={-1}
+                className={`input py-2.5 text-sm bg-black/[0.03] text-muted cursor-not-allowed font-mono tabular-nums${formErrors.amount ? " ring-1 ring-danger" : ""}`}
+                title="Auto-calculated from Qty × Rate" />
+              {formErrors.amount && <p className="mt-1 text-xs text-danger">{formErrors.amount}</p>}
+            </div>
           </div>
-          <p className="text-xs text-muted mt-2">Tip: Enter Qty + Rate — Amount auto-calculates on blur.</p>
+          <p className="text-xs text-muted mt-2">Amount is auto-calculated from Qty × Rate — enter Qty and Rate, and it fills in on blur.</p>
           <div className="flex gap-3 mt-4">
             <button onClick={handleSave} disabled={saving || !form.detail || !form.amount} className="btn-primary">{saving ? "Saving…" : "Save Sale"}</button>
             <button onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
@@ -238,12 +256,14 @@ export default function SalesPage() {
 
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[760px]">
+          <table className="w-full text-sm min-w-[900px]">
             <thead>
               <tr className="bg-black/[0.02] border-b border-line">
                 <SortHeader col="date" label="Date" sort={sort} onSort={onSort} />
                 <th className="th">Detail</th>
                 <th className="th">Customer</th>
+                <th className="th">Packing</th>
+                <th className="th">Unit</th>
                 <th className="th">Qty</th>
                 <th className="th text-right">Rate</th>
                 <SortHeader col="amount" label="Amount" sort={sort} onSort={onSort} align="right" />
@@ -252,11 +272,11 @@ export default function SalesPage() {
             </thead>
             <tbody className="divide-y divide-line">
               {loading ? (
-                <TableSkeleton rows={6} cols={7} />
+                <TableSkeleton rows={6} cols={9} />
               ) : error ? (
-                <tr><td colSpan={7}><ErrorState onRetry={() => load(search, page, sort)} compact /></td></tr>
+                <tr><td colSpan={9}><ErrorState onRetry={() => load(search, page, sort)} compact /></td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={7}><EmptyState icon={TrendingUp} compact title={search ? "No matches" : "No sales yet"} description={search ? `Nothing matches “${search}”.` : "Record your first sale with the “Add Sale” button."} /></td></tr>
+                <tr><td colSpan={9}><EmptyState icon={TrendingUp} compact title={search ? "No matches" : "No sales yet"} description={search ? `Nothing matches “${search}”.` : "Record your first sale with the “Add Sale” button."} /></td></tr>
               ) : rows.map(r => editId === r.id ? (
                 <tr key={r.id} className="bg-accent-tint/40">
                   <td className="px-4 py-2">
@@ -267,13 +287,19 @@ export default function SalesPage() {
                   </td>
                   <td className="px-4 py-2 text-muted text-xs whitespace-nowrap">{r.customerName ?? "Cash"}</td>
                   <td className="px-4 py-2">
+                    <input value={editForm.packing} onChange={e => setEditForm(f => ({ ...f, packing: e.target.value }))} className="input px-2 py-1.5 text-xs" />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input value={editForm.unit} onChange={e => setEditForm(f => ({ ...f, unit: e.target.value }))} className="input px-2 py-1.5 text-xs" />
+                  </td>
+                  <td className="px-4 py-2">
                     <input type="number" value={editForm.qty} onChange={e => setEditForm(f => ({ ...f, qty: e.target.value }))} onBlur={handleEditAutoAmount} className="input px-2 py-1.5 text-xs" />
                   </td>
                   <td className="px-4 py-2">
                     <input type="number" value={editForm.rate} onChange={e => setEditForm(f => ({ ...f, rate: e.target.value }))} onBlur={handleEditAutoAmount} className="input px-2 py-1.5 text-xs text-right font-mono" />
                   </td>
                   <td className="px-4 py-2">
-                    <input type="number" value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))} className="input px-2 py-1.5 text-sm text-right font-mono" />
+                    <input type="number" value={editForm.amount} readOnly tabIndex={-1} title="Auto-calculated from Qty × Rate" className="input px-2 py-1.5 text-sm text-right font-mono bg-black/[0.03] text-muted cursor-not-allowed" />
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap">
                     <div className="flex items-center gap-4">
@@ -295,6 +321,8 @@ export default function SalesPage() {
                       <span className="text-muted text-xs">Cash</span>
                     )}
                   </td>
+                  <td className="px-4 py-3 text-muted text-xs">{r.packing || "—"}</td>
+                  <td className="px-4 py-3 text-muted text-xs">{r.unit || "—"}</td>
                   <td className="px-4 py-3 text-muted text-xs">{r.qty ? Number(r.qty).toLocaleString() : "—"}</td>
                   <td className="px-4 py-3 text-right font-mono text-muted text-xs tabular-nums">{r.rate ? formatMoney(r.rate) : "—"}</td>
                   <td className="px-4 py-3 text-right font-mono font-semibold text-ink tabular-nums">{formatMoney(r.amount)}</td>
@@ -310,7 +338,7 @@ export default function SalesPage() {
             {rows.length > 0 && (
               <tfoot>
                 <tr className="border-t border-line bg-black/[0.02]">
-                  <td colSpan={5} className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                  <td colSpan={7} className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted">
                     {search ? "Total (filtered)" : "Total Sales"}
                   </td>
                   <td className="px-4 py-3 text-right font-mono font-semibold text-ink tabular-nums">{formatMoney(total)}</td>

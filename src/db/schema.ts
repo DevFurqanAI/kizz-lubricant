@@ -67,6 +67,8 @@ export const sales = pgTable("sales", {
   id: serial("id").primaryKey(),
   date: date("date").notNull(),
   detail: varchar("detail", { length: 400 }).notNull(),
+  packing: varchar("packing", { length: 100 }),
+  unit: varchar("unit", { length: 50 }),
   qty: numeric("qty", { precision: 12, scale: 3 }),
   rate: numeric("rate", { precision: 14, scale: 2 }),
   amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),

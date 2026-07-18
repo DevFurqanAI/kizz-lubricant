@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { salary } from "@/db/schema";
 import { asc, desc, sql, ilike } from "drizzle-orm";
 import { parseListParams } from "@/lib/pagination";
+import { validateSalary, hasErrors, firstError } from "@/lib/validation";
 
 export const dynamic = "force-dynamic"; // ensures this route is never cached/stale
 
@@ -40,9 +41,10 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const { date, employee, amount, account } = await req.json();
-    if (!date || !employee || amount === undefined)
-      return NextResponse.json({ error: "date, employee and amount required" }, { status: 400 });
+    const body = await req.json();
+    const { date, employee, amount, account } = body;
+    const errors = validateSalary(body);
+    if (hasErrors(errors)) return NextResponse.json({ error: firstError(errors), fields: errors }, { status: 400 });
     const [row] = await db.insert(salary).values({ date, employee, amount: String(amount), account: account ?? null }).returning();
     return NextResponse.json(row, { status: 201 });
   } catch (err) {

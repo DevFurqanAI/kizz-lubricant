@@ -12,6 +12,7 @@ import { Pagination } from "@/components/pagination";
 import { EmptyState, ErrorState, CardGridSkeleton } from "@/components/states";
 import { SearchInput } from "@/components/search-input";
 import { Users } from "lucide-react";
+import { validateCustomer, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 const PAGE_SIZE = 50;
 const cacheKey = (q: string, page: number) => `${q}|p${page}`;
@@ -27,6 +28,7 @@ export default function CustomersPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: "", accountTitle: "", owner: "", cnic: "", address: "", phone: "", whatsapp: "", email: "" });
+  const [formErrors, setFormErrors] = useState<FieldErrors>({});
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ name: "", owner: "", cnic: "", address: "", phone: "", whatsapp: "" });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -72,7 +74,9 @@ export default function CustomersPage() {
   };
 
   const handleSave = async () => {
-    if (!form.name) return;
+    const errs = validateCustomer(form);
+    if (hasErrors(errs)) { setFormErrors(errs); toast.error(firstError(errs)!); return; }
+    setFormErrors({});
     setSaving(true);
     try {
       await api.post("/customers", form);
@@ -99,7 +103,8 @@ export default function CustomersPage() {
 
   const saveEdit = async (id: number, e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
-    if (!editForm.name) return;
+    const errs = validateCustomer(editForm);
+    if (hasErrors(errs)) { toast.error(firstError(errs)!); return; }
     const prev = customers;
     setCustomers(cs => cs.map(c => c.id === id ? { ...c, ...editForm } : c));
     setEditId(null);
@@ -156,7 +161,8 @@ export default function CustomersPage() {
             ].map(({ key, label }) => (
               <div key={key}>
                 <label className="label">{label}</label>
-                <input value={(form as Record<string, string>)[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} className="input py-2.5 text-sm" />
+                <input value={(form as Record<string, string>)[key]} onChange={e => { setForm(f => ({ ...f, [key]: e.target.value })); setFormErrors(er => ({ ...er, [key]: "" })); }} className={`input py-2.5 text-sm${formErrors[key] ? " ring-1 ring-danger" : ""}`} />
+                {formErrors[key] && <p className="mt-1 text-xs text-danger">{formErrors[key]}</p>}
               </div>
             ))}
           </div>

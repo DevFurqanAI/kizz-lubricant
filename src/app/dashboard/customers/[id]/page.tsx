@@ -12,6 +12,7 @@ import { customerDetailCache as customerCache, type FullCustomer } from "@/lib/c
 import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
 import { EmptyState, ErrorState } from "@/components/states";
+import { validateLedgerEntry, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 const VISIBLE_LIMIT = 100; // progressively reveal older rows beyond this
 
@@ -32,6 +33,7 @@ export default function CustomerLedgerPage() {
     credit: "",
     account: "",
   });
+  const [formErrors, setFormErrors] = useState<FieldErrors>({});
 
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({
@@ -74,7 +76,9 @@ export default function CustomerLedgerPage() {
   }, [id]);
 
   const handleSave = async () => {
-    if (!form.date) return;
+    const errs = validateLedgerEntry(form);
+    if (hasErrors(errs)) { setFormErrors(errs); toast.error(firstError(errs)!); return; }
+    setFormErrors({});
     setSaving(true);
     try {
       const entries = await api.post<CustomerEntry[]>(`/customers/${id}/entries`, {
@@ -150,7 +154,8 @@ export default function CustomerLedgerPage() {
   };
 
   const saveEdit = async (entryId: number) => {
-    if (!editForm.date) return;
+    const errs = validateLedgerEntry(editForm);
+    if (hasErrors(errs)) { toast.error(firstError(errs)!); return; }
     setEditSaving(true);
     try {
       const entries = await api.patch<CustomerEntry[]>(`/customers/${id}/entries/${entryId}`, {
@@ -369,10 +374,11 @@ export default function CustomerLedgerPage() {
                 <input
                   type={type}
                   value={(form as Record<string, string>)[key]}
-                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                  onChange={(e) => { setForm((f) => ({ ...f, [key]: e.target.value })); setFormErrors((er) => ({ ...er, [key]: "" })); }}
                   onBlur={key === "rate" || key === "qty" ? handleAutoDebit : undefined}
-                  className="input py-2.5 text-sm"
+                  className={`input py-2.5 text-sm${formErrors[key] ? " ring-1 ring-danger" : ""}`}
                 />
+                {formErrors[key] && <p className="mt-1 text-xs text-danger">{formErrors[key]}</p>}
               </div>
             ))}
           </div>

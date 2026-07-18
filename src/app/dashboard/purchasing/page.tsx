@@ -12,6 +12,7 @@ import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
 import { SortHeader, type Sort, nextSort } from "@/components/sort-header";
 import { SearchInput } from "@/components/search-input";
 import { TrendingDown } from "lucide-react";
+import { validateAmountEntry, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 type Row = { id: number; date: string; detail: string; amount: string };
 type PurchasingData = { rows: Row[]; total: number; count: number };
@@ -34,6 +35,7 @@ export default function PurchasingPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0,10), detail: "", amount: "" });
+  const [formErrors, setFormErrors] = useState<FieldErrors>({});
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ date: "", detail: "", amount: "" });
 
@@ -83,7 +85,9 @@ export default function PurchasingPage() {
   const goPage = (p: number) => { setPage(p); applyView(search, p, sort); };
 
   const handleSave = async () => {
-    if (!form.date || !form.detail || !form.amount) return;
+    const errs = validateAmountEntry(form);
+    if (hasErrors(errs)) { setFormErrors(errs); toast.error(firstError(errs)!); return; }
+    setFormErrors({});
     setSaving(true);
     try {
       await api.post<Row>("/purchasing", { ...form, amount: Number(form.amount) });
@@ -110,7 +114,8 @@ export default function PurchasingPage() {
 
   const startEdit = (r: Row) => { setEditId(r.id); setEditForm({ date: r.date.slice(0,10), detail: r.detail, amount: r.amount }); };
   const saveEdit = async (id: number) => {
-    if (!editForm.date || !editForm.detail || !editForm.amount) return;
+    const errs = validateAmountEntry(editForm);
+    if (hasErrors(errs)) { toast.error(firstError(errs)!); return; }
     const prevRows = rows;
     setRows(rs => rs.map(r => r.id === id ? { ...r, ...editForm } : r));
     setEditId(null);
@@ -138,7 +143,8 @@ export default function PurchasingPage() {
             {[{ key: "date", label: "Date", type: "date" }, { key: "detail", label: "Detail *", type: "text" }, { key: "amount", label: "Amount (Rs) *", type: "number" }].map(({ key, label, type }) => (
               <div key={key}>
                 <label className="label">{label}</label>
-                <input type={type} value={(form as Record<string, string>)[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} className="input py-2.5 text-sm" />
+                <input type={type} value={(form as Record<string, string>)[key]} onChange={e => { setForm(f => ({ ...f, [key]: e.target.value })); setFormErrors(er => ({ ...er, [key]: "" })); }} className={`input py-2.5 text-sm${formErrors[key] ? " ring-1 ring-danger" : ""}`} />
+                {formErrors[key] && <p className="mt-1 text-xs text-danger">{formErrors[key]}</p>}
               </div>
             ))}
           </div>

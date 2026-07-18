@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { customerEntries } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { recalcBalances } from "@/lib/ledger";
+import { validateLedgerEntry, hasErrors, firstError } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -17,9 +18,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   try {
     const customerId = Number(params.id);
-    const { date, product, packing, unit, qty, rate, debit, credit, account } = await req.json();
+    const body = await req.json();
+    const { date, product, packing, unit, qty, rate, debit, credit, account } = body;
 
-    if (!date) return NextResponse.json({ error: "date is required" }, { status: 400 });
+    const errors = validateLedgerEntry(body);
+    if (hasErrors(errors)) return NextResponse.json({ error: firstError(errors), fields: errors }, { status: 400 });
 
     await db.insert(customerEntries).values({
       customerId,

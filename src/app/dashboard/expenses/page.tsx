@@ -11,6 +11,7 @@ import { Pagination } from "@/components/pagination";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
 import { SortHeader, type Sort, nextSort } from "@/components/sort-header";
 import { SearchInput } from "@/components/search-input";
+import { validateAmountEntry, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 type Row = { id: number; date: string; detail: string; amount: string };
 type ListResponse = { rows: Row[]; total: number; count: number };
@@ -31,6 +32,7 @@ export default function ExpensesPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), detail: "", amount: "" });
+  const [formErrors, setFormErrors] = useState<FieldErrors>({});
 
   // ── Edit state ──────────────────────────────────────────
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -77,7 +79,9 @@ export default function ExpensesPage() {
   const goPage = (p: number) => { setPage(p); load(search, p, sort); };
 
   const handleSave = async () => {
-    if (!form.date || !form.detail || !form.amount) return;
+    const errs = validateAmountEntry(form);
+    if (hasErrors(errs)) { setFormErrors(errs); toast.error(firstError(errs)!); return; }
+    setFormErrors({});
     setSaving(true);
     try {
       await api.post("/expenses", { ...form, amount: Number(form.amount) });
@@ -129,7 +133,8 @@ export default function ExpensesPage() {
   };
 
   const saveEdit = async (id: number) => {
-    if (!editForm.date || !editForm.detail || !editForm.amount) return;
+    const errs = validateAmountEntry(editForm);
+    if (hasErrors(errs)) { toast.error(firstError(errs)!); return; }
     setEditSaving(true);
     const prevRows = rows;
     try {
@@ -216,9 +221,10 @@ export default function ExpensesPage() {
                 <input
                   type={type}
                   value={(form as Record<string, string>)[key]}
-                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                  className="input py-2.5 text-sm"
+                  onChange={(e) => { setForm((f) => ({ ...f, [key]: e.target.value })); setFormErrors((er) => ({ ...er, [key]: "" })); }}
+                  className={`input py-2.5 text-sm${formErrors[key] ? " ring-1 ring-danger" : ""}`}
                 />
+                {formErrors[key] && <p className="mt-1 text-xs text-danger">{formErrors[key]}</p>}
               </div>
             ))}
           </div>

@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { customers } from "@/db/schema";
 import { asc, ilike, or, sql } from "drizzle-orm";
 import { parseListParams } from "@/lib/pagination";
+import { validateCustomer, hasErrors, firstError } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,8 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = await req.json();
-    if (!body.name) return NextResponse.json({ error: "name is required" }, { status: 400 });
+    const errors = validateCustomer(body);
+    if (hasErrors(errors)) return NextResponse.json({ error: firstError(errors), fields: errors }, { status: 400 });
     const [row] = await db.insert(customers).values({
       name: body.name,
       accountTitle: body.accountTitle ?? null,

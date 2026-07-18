@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { expenses } from "@/db/schema";
 import { asc, desc, sql, ilike } from "drizzle-orm";
 import { parseListParams } from "@/lib/pagination";
+import { validateAmountEntry, hasErrors, firstError } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -40,8 +41,10 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const { date, detail, amount } = await req.json();
-    if (!date || !detail || amount === undefined) return NextResponse.json({ error: "date, detail and amount required" }, { status: 400 });
+    const body = await req.json();
+    const { date, detail, amount } = body;
+    const errors = validateAmountEntry(body);
+    if (hasErrors(errors)) return NextResponse.json({ error: firstError(errors), fields: errors }, { status: 400 });
     const [row] = await db.insert(expenses).values({ date, detail, amount: String(amount) }).returning();
     return NextResponse.json(row, { status: 201 });
   } catch (err) {

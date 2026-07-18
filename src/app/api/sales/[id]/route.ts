@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { sales, customerEntries } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { recalcBalances } from "@/lib/ledger";
+import { validateSale, hasErrors, firstError } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -40,16 +41,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const b = await req.json();
+    const errors = validateSale(b, "update");
+    if (hasErrors(errors)) {
+      return NextResponse.json({ error: firstError(errors), fields: errors }, { status: 400 });
+    }
     const update: Record<string, unknown> = {};
     if ("date" in b) update.date = b.date;
     if ("detail" in b) update.detail = b.detail;
+    if ("packing" in b) update.packing = num(b.packing);
+    if ("unit" in b) update.unit = num(b.unit);
     if ("qty" in b) update.qty = num(b.qty);
     if ("rate" in b) update.rate = num(b.rate);
-    if ("amount" in b) {
-      const n = Number(b.amount);
-      if (!Number.isFinite(n)) return NextResponse.json({ error: "amount must be a number." }, { status: 400 });
-      update.amount = String(n);
-    }
+    if ("amount" in b) update.amount = String(Number(b.amount));
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ error: "No editable fields provided." }, { status: 400 });
     }
@@ -60,7 +63,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (row?.ledgerEntryId && row.customerId) {
       await db
         .update(customerEntries)
-        .set({ date: row.date, product: row.detail, qty: row.qty, rate: row.rate, debit: row.amount })
+        .set({ date: row.date, product: row.detail, packing: row.packing, unit: row.unit, qty: row.qty, rate: row.rate, debit: row.amount })
         .where(eq(customerEntries.id, row.ledgerEntryId));
       await recalcBalances(row.customerId);
     }

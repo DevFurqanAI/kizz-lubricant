@@ -6,6 +6,7 @@ import { sales, customers, customerEntries } from "@/db/schema";
 import { asc, desc, eq, sql, ilike } from "drizzle-orm";
 import { parseListParams } from "@/lib/pagination";
 import { recalcBalances } from "@/lib/ledger";
+import { validateSale, hasErrors, firstError } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,8 @@ export async function GET(req: NextRequest) {
           id: sales.id,
           date: sales.date,
           detail: sales.detail,
+          packing: sales.packing,
+          unit: sales.unit,
           qty: sales.qty,
           rate: sales.rate,
           amount: sales.amount,
@@ -58,15 +61,17 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const { date, detail, qty, rate, amount, customerId } = await req.json();
-    if (!date || !detail || amount === undefined) {
-      return NextResponse.json({ error: "date, detail and amount are required" }, { status: 400 });
+    const body = await req.json();
+    const { date, detail, packing, unit, qty, rate, amount, customerId } = body;
+    const errors = validateSale(body);
+    if (hasErrors(errors)) {
+      return NextResponse.json({ error: firstError(errors), fields: errors }, { status: 400 });
     }
     const custId = customerId ? Number(customerId) : null;
 
     const [row] = await db
       .insert(sales)
-      .values({ date, detail, qty: num(qty), rate: num(rate), amount: String(amount), customerId: custId })
+      .values({ date, detail, packing: num(packing), unit: num(unit), qty: num(qty), rate: num(rate), amount: String(amount), customerId: custId })
       .returning();
 
     // Automation: mirror the sale into the customer's ledger as a debit.
@@ -77,6 +82,8 @@ export async function POST(req: NextRequest) {
           customerId: custId,
           date,
           product: detail,
+          packing: num(packing),
+          unit: num(unit),
           qty: num(qty),
           rate: num(rate),
           debit: String(amount),
