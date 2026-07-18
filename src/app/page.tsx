@@ -66,11 +66,13 @@ export default function LoginPage() {
           </div>
 
           <div className="relative max-w-md">
-            <p className="rise rise-1 eyebrow text-accent-ink/70">Business ledger</p>
-            <h1 className="rise rise-2 mt-4 text-[clamp(2.2rem,3.6vw,3.1rem)] font-semibold leading-[1.06] tracking-tightest text-ink">
-              Every drum, every rupee,
+            <p className="rise rise-1 eyebrow text-accent-ink/70">Business</p>
+            <h1 className="rise rise-2 mt-4 italic text-[clamp(2.2rem,3.6vw,3.1rem)] font-semibold leading-[1.06] tracking-tightest text-ink">
+              Keep your engine
               <br />
-              <span className="text-accent">one ledger.</span>
+              <span className="text-accent">Running</span>
+              <br />
+              Like new
             </h1>
             <p className="rise rise-3 mt-5 text-muted text-[15px] leading-relaxed">
               Sales, purchasing, expenses, salary and customer balances — live and safe.
