@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     const col = SORT[sort as keyof typeof SORT];
     const order = dir === "asc" ? [asc(col), asc(sales.id)] : [desc(col), desc(sales.id)];
 
-    const [rows, [{ total }], [{ count }]] = await Promise.all([
+    const [rows, [{ total, totalKg, totalL }], [{ count }]] = await Promise.all([
       db
         .select({
           id: sales.id,
@@ -37,6 +37,8 @@ export async function GET(req: NextRequest) {
           qty: sales.qty,
           rate: sales.rate,
           amount: sales.amount,
+          saleKg: sales.saleKg,
+          saleKgUnit: sales.saleKgUnit,
           customerId: sales.customerId,
           customerName: customers.name,
         })
@@ -46,11 +48,26 @@ export async function GET(req: NextRequest) {
         .orderBy(...order)
         .limit(limit)
         .offset(offset),
-      db.select({ total: sql<string>`COALESCE(SUM(amount),0)` }).from(sales).where(where),
+      db
+        .select({
+          total: sql<string>`COALESCE(SUM(amount),0)`,
+          totalKg: sql<string>`COALESCE(SUM(sale_kg) FILTER (WHERE sale_kg_unit = 'Kg'),0)`,
+          totalL: sql<string>`COALESCE(SUM(sale_kg) FILTER (WHERE sale_kg_unit = 'L'),0)`,
+        })
+        .from(sales)
+        .where(where),
       db.select({ count: sql<string>`COUNT(*)` }).from(sales).where(where),
     ]);
 
-    return NextResponse.json({ rows, total: Number(total), count: Number(count), page, limit });
+    return NextResponse.json({
+      rows,
+      total: Number(total),
+      totalKg: Number(totalKg),
+      totalL: Number(totalL),
+      count: Number(count),
+      page,
+      limit,
+    });
   } catch (err) {
     console.error("GET /sales failed:", err);
     return NextResponse.json({ error: "Failed to load sales." }, { status: 500 });
@@ -62,16 +79,27 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = await req.json();
-    const { date, detail, packing, unit, qty, rate, amount, customerId } = body;
+    const { date, detail, packing, unit, qty, rate, amount, saleKg, saleKgUnit, customerId, paidNow, paidMethod, paidNote } = body;
     const errors = validateSale(body);
     if (hasErrors(errors)) {
       return NextResponse.json({ error: firstError(errors), fields: errors }, { status: 400 });
     }
     const custId = customerId ? Number(customerId) : null;
+    // Unit only means something alongside a value; drop a stray unit otherwise.
+    const kg = num(saleKg);
+    const kgUnit = kg ? (saleKgUnit ? String(saleKgUnit) : "Kg") : null;
+
+    // On-spot payment: what the customer handed over at the time of sale. Only
+    // meaningful against a real customer's ledger (a walk-in sale is cash by
+    // definition), so it's ignored when no customer is picked.
+    const paid = paidNow === null || paidNow === undefined || paidNow === "" ? 0 : Number(paidNow);
+    if (!Number.isFinite(paid) || paid < 0) {
+      return NextResponse.json({ error: "Amount paid now must be a positive number." }, { status: 400 });
+    }
 
     const [row] = await db
       .insert(sales)
-      .values({ date, detail, packing: num(packing), unit: num(unit), qty: num(qty), rate: num(rate), amount: String(amount), customerId: custId })
+      .values({ date, detail, packing: num(packing), unit: num(unit), qty: num(qty), rate: num(rate), amount: String(amount), saleKg: kg, saleKgUnit: kgUnit, customerId: custId })
       .returning();
 
     // Automation: mirror the sale into the customer's ledger as a debit.
@@ -92,6 +120,27 @@ export async function POST(req: NextRequest) {
           account: "Sale",
         })
         .returning();
+
+      // On-spot payment: post the amount received as a standalone credit. It is
+      // NOT linked to the sale — it's real money received, so it survives even
+      // if the sale line is later edited or removed.
+      if (custId && paid > 0) {
+        const acct = [paidMethod, paidNote]
+          .map((s) => (typeof s === "string" ? s.trim() : ""))
+          .filter(Boolean)
+          .join(" · ");
+        // No product line — an empty product is what marks a row as a payment
+        // (matches the ledger render + Excel export detection).
+        await db.insert(customerEntries).values({
+          customerId: custId,
+          date,
+          debit: "0",
+          credit: String(paid),
+          balance: "0", // recalculated below
+          account: acct || null,
+        });
+      }
+
       await recalcBalances(custId);
       await db.update(sales).set({ ledgerEntryId: entry.id }).where(eq(sales.id, row.id));
     }

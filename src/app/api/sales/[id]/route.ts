@@ -53,6 +53,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if ("qty" in b) update.qty = num(b.qty);
     if ("rate" in b) update.rate = num(b.rate);
     if ("amount" in b) update.amount = String(Number(b.amount));
+    if ("saleKg" in b) {
+      update.saleKg = num(b.saleKg);
+      // Keep the unit consistent with the value: set when there's a weight, clear otherwise.
+      update.saleKgUnit = update.saleKg ? (b.saleKgUnit ? String(b.saleKgUnit) : "Kg") : null;
+    }
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ error: "No editable fields provided." }, { status: 400 });
     }

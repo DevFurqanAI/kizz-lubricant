@@ -35,6 +35,11 @@ export default function CustomerLedgerPage() {
   });
   const [formErrors, setFormErrors] = useState<FieldErrors>({});
 
+  // Record Payment — a friendly credit-only form (a payment reduces what they owe).
+  const [showPayForm, setShowPayForm] = useState(false);
+  const [paySaving, setPaySaving] = useState(false);
+  const [payForm, setPayForm] = useState({ date: new Date().toISOString().slice(0, 10), amount: "", method: "", note: "" });
+
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({
     date: "", product: "", packing: "", unit: "", qty: "", rate: "", debit: "", credit: "", account: "",
@@ -100,6 +105,40 @@ export default function CustomerLedgerPage() {
       toast.error("Couldn't add entry");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Record a payment: a credit-only ledger entry. Method + note (optional) are
+  // stored in the Account/Note column; the row is labelled "Payment".
+  const handleSavePayment = async () => {
+    const amt = Number(payForm.amount);
+    if (!payForm.amount || !Number.isFinite(amt) || amt <= 0) {
+      toast.error("Enter a payment amount greater than 0.");
+      return;
+    }
+    setPaySaving(true);
+    try {
+      const acct = [payForm.method, payForm.note].map((s) => s.trim()).filter(Boolean).join(" · ");
+      // No product line — that's what marks the row as a payment (see the ledger
+      // render and the Excel export, which both key off an empty product).
+      const entries = await api.post<CustomerEntry[]>(`/customers/${id}/entries`, {
+        date: payForm.date,
+        debit: 0,
+        credit: amt,
+        account: acct || null,
+      });
+      setCustomer((c) => {
+        const next = c ? { ...c, entries } : c;
+        if (next) customerCache.set(id, next);
+        return next;
+      });
+      setPayForm({ date: new Date().toISOString().slice(0, 10), amount: "", method: "", note: "" });
+      setShowPayForm(false);
+      toast.success("Payment recorded");
+    } catch {
+      toast.error("Couldn't record payment");
+    } finally {
+      setPaySaving(false);
     }
   };
 
@@ -348,11 +387,56 @@ export default function CustomerLedgerPage() {
             <MessageCircle className="w-4 h-4" strokeWidth={2} />
             {sharing ? "Sending…" : "WhatsApp"}
           </button>
-          <button onClick={() => setShowForm((s) => !s)} className="btn-primary">
+          <button
+            onClick={() => { setShowPayForm((s) => !s); setShowForm(false); }}
+            className="btn inline-flex items-center gap-2 border border-accent/30 text-accent-ink hover:bg-accent-tint"
+          >
+            + Record Payment
+          </button>
+          <button onClick={() => { setShowForm((s) => !s); setShowPayForm(false); }} className="btn-primary">
             + Add Entry
           </button>
         </div>
       </div>
+
+      {showPayForm && (
+        <div className="card p-6">
+          <h3 className="font-semibold text-ink mb-1">Record Payment</h3>
+          <p className="text-xs text-muted mb-4">Money received from this customer — posts as a credit that reduces what they owe.</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label className="label">Date</label>
+              <input type="date" value={payForm.date}
+                onChange={(e) => setPayForm((f) => ({ ...f, date: e.target.value }))}
+                className="input py-2.5 text-sm" />
+            </div>
+            <div>
+              <label className="label">Amount (Rs) *</label>
+              <input type="number" value={payForm.amount}
+                onChange={(e) => setPayForm((f) => ({ ...f, amount: e.target.value }))}
+                className="input py-2.5 text-sm font-mono" placeholder="0" autoFocus />
+            </div>
+            <div>
+              <label className="label">Method</label>
+              <input type="text" value={payForm.method}
+                onChange={(e) => setPayForm((f) => ({ ...f, method: e.target.value }))}
+                className="input py-2.5 text-sm" placeholder="Cash, Bank…" />
+            </div>
+            <div>
+              <label className="label">Reference / Note</label>
+              <input type="text" value={payForm.note}
+                onChange={(e) => setPayForm((f) => ({ ...f, note: e.target.value }))}
+                className="input py-2.5 text-sm" placeholder="Cheque #, txn id…" />
+            </div>
+          </div>
+          <div className="flex gap-3 mt-4">
+            <button onClick={handleSavePayment} disabled={paySaving} className="btn-primary">
+              {paySaving ? "Saving…" : "Save Payment"}
+            </button>
+            <button onClick={() => setShowPayForm(false)} className="btn-secondary">Cancel</button>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="card p-6">
@@ -480,6 +564,32 @@ export default function CustomerLedgerPage() {
                 const bal = toNum(e.balance);
                 const isDebitRow = toNum(e.debit) > 0;
                 const isCreditRow = toNum(e.credit) > 0 && !isDebitRow;
+                // A payment = a credit with no product line. Render it as one
+                // clear, italic "Payment Received" band spanning the item columns.
+                const isPayment = isCreditRow && (!e.product || e.product === "Payment");
+
+                if (isPayment) {
+                  return (
+                    <tr key={e.id} className="bg-success-tint/40 hover:bg-success-tint/60 transition-colors">
+                      <td className="px-4 py-3 text-muted text-xs whitespace-nowrap">{fmtDate(e.date)}</td>
+                      <td colSpan={6} className="px-4 py-3">
+                        <span className="italic font-semibold text-success">Payment Received</span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-success font-semibold tabular-nums">{formatMoney(e.credit)}</td>
+                      <td className={`px-4 py-3 text-right font-mono font-semibold text-[13px] tabular-nums ${bal > 0 ? "text-warning" : bal < 0 ? "text-success" : "text-muted"}`}>
+                        {formatMoney(bal)}
+                      </td>
+                      <td className="px-4 py-3 text-success/80 italic text-xs max-w-[180px] truncate">{e.account || "—"}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-4">
+                          <button onClick={() => startEdit(e)} className="text-muted/50 hover:text-accent transition-colors" title="Edit entry">✎</button>
+                          <button onClick={() => handleDelete(e.id)} className="text-muted/50 hover:text-danger transition-colors text-lg leading-none" title="Delete entry">×</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
+
                 return (
                   <tr key={e.id} className={`hover:bg-black/[0.015] transition-colors ${isCreditRow ? "bg-success-tint/40" : ""}`}>
                     <td className="px-4 py-3 text-muted text-xs whitespace-nowrap">{fmtDate(e.date)}</td>

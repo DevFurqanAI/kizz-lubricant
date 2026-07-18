@@ -135,12 +135,12 @@ export async function buildLedgerBlob(customer: FullCustomer): Promise<Blob> {
     const debit = toNum(e.debit);
     const credit = toNum(e.credit);
     const bal = toNum(e.balance);
-    const isPayment = !e.product && credit > 0 && debit === 0;
+    const isPayment = credit > 0 && debit === 0 && (!e.product || e.product === "Payment");
 
     setCell(rr, 1, fmtDate(e.date), { fill: bg, align: "left", border: grid });
     fit(0, fmtDate(e.date));
     if (isPayment) {
-      merge(rr, 2, rr, 4, "Receiving Amount", { fill: bg, color: MUTED, italic: true, align: "left", border: grid });
+      merge(rr, 2, rr, 4, "Payment Received", { fill: bg, color: GREEN, italic: true, align: "left", border: grid });
     } else {
       setCell(rr, 2, e.product || "", { fill: bg, align: "left", border: grid });
       setCell(rr, 3, e.packing || "", { fill: bg, align: "center", border: grid });

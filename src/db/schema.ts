@@ -72,6 +72,11 @@ export const sales = pgTable("sales", {
   qty: numeric("qty", { precision: 12, scale: 3 }),
   rate: numeric("rate", { precision: 14, scale: 2 }),
   amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+  // Weight / volume actually sold, tracked separately from pack Qty (e.g. 10
+  // drums = 1800 Kg). `saleKgUnit` distinguishes weight (Kg) from volume (L)
+  // so the two are never summed together. Both optional.
+  saleKg: numeric("sale_kg", { precision: 12, scale: 3 }),
+  saleKgUnit: varchar("sale_kg_unit", { length: 8 }),
   // Optional link to a customer. When set, the sale mirrors itself into that
   // customer's ledger as a debit; `ledgerEntryId` points at that auto-created
   // row so edits/deletes stay in sync. Both null = walk-in / cash sale.

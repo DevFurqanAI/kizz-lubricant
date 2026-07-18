@@ -115,7 +115,15 @@ export function validateSale(b: Record<string, unknown>, mode: Mode = "create"):
   if (active(b, "qty", mode)) set(e, "qty", checkQty(b.qty));
   if (active(b, "rate", mode)) set(e, "rate", checkMoney(b.rate, "Rate"));
   if (active(b, "amount", mode)) set(e, "amount", checkMoney(b.amount, "Amount", { required: true }));
+  if (active(b, "saleKg", mode)) set(e, "saleKg", checkQty(b.saleKg, "Sale Kg"));
+  if (active(b, "saleKgUnit", mode)) set(e, "saleKgUnit", checkSaleKgUnit(b.saleKgUnit));
   return e;
+}
+
+/** Sale Kg unit: optional, but if given must be one of the known units. */
+export function checkSaleKgUnit(v: unknown): string | null {
+  if (isBlank(v)) return null;
+  return ["Kg", "L"].includes(String(v).trim()) ? null : "Unit must be Kg or L.";
 }
 
 export function validateLedgerEntry(b: Record<string, unknown>, mode: Mode = "create"): FieldErrors {
