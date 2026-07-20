@@ -1,29 +1,22 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
 import { formatMoney, monthLabel } from "@/lib/utils";
 import { createLocalCache } from "@/lib/localCache";
 import { saveOrShareBlob } from "@/lib/file-download";
 import { EmptyState, ErrorState } from "@/components/states";
-import { ProfitBars, TrendChart } from "@/components/charts";
+import { ProfitBars, SalesCostBars, CostDonut, COST_PURCHASING, COST_EXPENSES, COST_SALARY } from "@/components/charts";
+import { RangeFilter } from "@/components/range-filter";
+import { filterPnlRows, recomputePnlGrand, describeRange, type PnlMonthRow, type RangeSelection } from "@/lib/pnl-range";
 import { useToast } from "@/components/toast";
 import { BarChart3, FileSpreadsheet } from "lucide-react";
 
-type MonthRow = {
-  month: string;
-  sales: number;
-  purchasing: number;
-  expenses: number;
-  salary: number;
-  totalCost: number;
-  profit: number;
-  margin: number;
-};
+type MonthRow = PnlMonthRow;
 
 type PnlData = {
   rows: MonthRow[];
-  grand: { sales: number; purchasing: number; expenses: number; salary: number; totalCost: number; profit: number; margin: number };
+  grand: Omit<MonthRow, "month">;
 };
 
 const pnlCache = createLocalCache<PnlData>("pnl", { ttlMs: 5 * 60_000 });
@@ -34,7 +27,11 @@ export default function PnlPage() {
   const [loading, setLoading] = useState(!cached0);
   const [error, setError] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [range, setRange] = useState<RangeSelection>({ preset: "all" });
   const toast = useToast();
+
+  const filteredRows = useMemo(() => filterPnlRows(data?.rows ?? [], range), [data, range]);
+  const filteredGrand = useMemo(() => recomputePnlGrand(filteredRows), [filteredRows]);
 
   const load = useCallback(() => {
     setError(false);
@@ -62,16 +59,18 @@ export default function PnlPage() {
     </div>
   );
 
-  const g = data?.grand;
-  const isProfit = (g?.profit ?? 0) >= 0;
+  const g = filteredGrand;
+  const isProfit = g.profit >= 0;
 
   const exportXlsx = async () => {
-    if (!data || !g) return;
+    if (!data || filteredRows.length === 0) return;
     setExporting(true);
     try {
       const { buildPnlXlsx } = await import("@/lib/reports-xlsx");
-      const blob = await buildPnlXlsx(data.rows, g);
-      await saveOrShareBlob(blob, `profit_loss_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      const blob = await buildPnlXlsx(filteredRows, g, `Range: ${describeRange(range)}`);
+      const rangeSuffix =
+        range.preset === "custom" ? `${range.from}_to_${range.to}` : range.preset;
+      await saveOrShareBlob(blob, `profit_loss_export_${rangeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch {
       toast.error("Couldn't export profit & loss");
     } finally {
@@ -87,21 +86,25 @@ export default function PnlPage() {
           <p className="mt-1 text-sm text-muted">Month by month: what you sold, minus everything you spent, and what was left.</p>
         </div>
         {data && data.rows.length > 0 && (
-          <button onClick={exportXlsx} disabled={exporting} className="btn-secondary">
+          <button onClick={exportXlsx} disabled={exporting || filteredRows.length === 0} className="btn-secondary">
             <FileSpreadsheet className="w-4 h-4" strokeWidth={2} />
             {exporting ? "Exporting…" : "Export Excel"}
           </button>
         )}
       </div>
 
-      {/* Grand total banner */}
-      {g && (
+      {data && data.rows.length > 0 && (
+        <RangeFilter rows={data.rows} value={range} onChange={setRange} />
+      )}
+
+      {/* Grand total banner — reflects the active range filter */}
+      {data && (
         <div className="card p-6">
           <div className="flex items-center gap-2">
             <span className={`badge ${isProfit ? "bg-success-tint text-success" : "bg-danger-tint text-danger"}`}>
-              {isProfit ? "Overall Net Profit" : "Overall Net Loss"}
+              {isProfit ? "Net Profit" : "Net Loss"}
             </span>
-            <span className="text-xs text-muted">{g.margin.toFixed(1)}% margin — all time</span>
+            <span className="text-xs text-muted">{g.margin.toFixed(1)}% margin — {describeRange(range)}</span>
           </div>
           <p className={`mt-3 font-mono text-4xl font-semibold tabular-nums ${isProfit ? "text-ink" : "text-danger"}`}>
             {formatMoney(Math.abs(g.profit))}
@@ -120,9 +123,21 @@ export default function PnlPage() {
         </div>
       )}
 
-      {/* Charts — profit/loss per month + sales momentum */}
-      {data && data.rows.length > 1 && (
+      {/* Charts — sales vs. costs, profit/loss per month, and the cost mix */}
+      {filteredRows.length > 1 && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+          <div className="card overflow-hidden">
+            <div className="px-5 sm:px-6 py-4 border-b border-line">
+              <h2 className="text-[15px] font-semibold text-ink">Sales vs. costs</h2>
+              <p className="mt-0.5 text-[12.5px] text-muted">
+                <span className="text-accent font-medium">Orange</span> = sales,{" "}
+                <span className="font-medium text-muted">grey</span> = total cost, each month.
+              </p>
+            </div>
+            <div className="p-3 sm:p-4">
+              <SalesCostBars data={filteredRows.map((r) => ({ label: monthLabel(r.month), sales: r.sales, cost: r.totalCost }))} />
+            </div>
+          </div>
           <div className="card overflow-hidden">
             <div className="px-5 sm:px-6 py-4 border-b border-line">
               <h2 className="text-[15px] font-semibold text-ink">Monthly profit / loss</h2>
@@ -132,17 +147,26 @@ export default function PnlPage() {
               </p>
             </div>
             <div className="p-3 sm:p-4">
-              <ProfitBars data={data.rows.map((r) => ({ label: monthLabel(r.month), value: r.profit }))} />
+              <ProfitBars data={filteredRows.map((r) => ({ label: monthLabel(r.month), value: r.profit, margin: r.margin }))} />
             </div>
           </div>
-          <div className="card overflow-hidden">
-            <div className="px-5 sm:px-6 py-4 border-b border-line">
-              <h2 className="text-[15px] font-semibold text-ink">Sales trend</h2>
-              <p className="mt-0.5 text-[12.5px] text-muted">Total sales billed each month.</p>
-            </div>
-            <div className="p-3 sm:p-4">
-              <TrendChart data={data.rows.map((r) => ({ label: monthLabel(r.month), value: r.sales }))} />
-            </div>
+        </div>
+      )}
+
+      {filteredRows.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="px-5 sm:px-6 py-4 border-b border-line">
+            <h2 className="text-[15px] font-semibold text-ink">Cost composition</h2>
+            <p className="mt-0.5 text-[12.5px] text-muted">Where your money went, {describeRange(range)}.</p>
+          </div>
+          <div className="p-5 sm:p-6">
+            <CostDonut
+              data={[
+                { label: "Purchasing", value: g.purchasing, color: COST_PURCHASING },
+                { label: "Expenses", value: g.expenses, color: COST_EXPENSES },
+                { label: "Salary", value: g.salary, color: COST_SALARY },
+              ]}
+            />
           </div>
         </div>
       )}
@@ -168,7 +192,7 @@ export default function PnlPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {!data || data.rows.length === 0 ? (
+              {filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={8}>
                     <EmptyState
@@ -179,7 +203,7 @@ export default function PnlPage() {
                     />
                   </td>
                 </tr>
-              ) : data.rows.map((r) => {
+              ) : filteredRows.map((r) => {
                 const isP = r.profit >= 0;
                 return (
                   <tr key={r.month} className="hover:bg-black/[0.015] transition-colors">
@@ -201,7 +225,7 @@ export default function PnlPage() {
                 );
               })}
             </tbody>
-            {g && data && data.rows.length > 0 && (
+            {data && filteredRows.length > 0 && (
               <tfoot>
                 <tr className="border-t border-line bg-black/[0.02] font-semibold">
                   <td className="px-4 py-3.5 text-[12px] uppercase tracking-wider text-muted">Grand Total</td>
