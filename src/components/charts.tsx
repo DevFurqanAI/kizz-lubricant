@@ -5,7 +5,7 @@ import { formatMoney } from "@/lib/utils";
 
 // ── Design tokens (graphite-ember) ──────────────────────────────────
 const ACCENT = "#E2540C";
-const SUCCESS = "#15914B";
+export const SUCCESS = "#15914B";
 const DANGER = "#DC2626";
 const GRID = "rgba(38,38,47,0.08)";
 const AXIS_TEXT = "#9A9AA6";
@@ -481,18 +481,17 @@ export function CostDonut({ data, height = 220 }: { data: DonutSlice[]; height?:
 // ── Sparkline — compact trend line for stat cards, no axes/gridlines ───
 export function Sparkline({
   data,
-  variant = "accent",
+  color = SUCCESS,
   height = 44,
 }: {
   data: ChartPoint[];
-  variant?: "accent" | "neutral";
+  color?: string;
   height?: number;
 }) {
   const [ref, W] = useMeasure();
   const mounted = useMounted();
   const [hover, setHover] = useState<number | null>(null);
   const clipId = useId();
-  const color = variant === "accent" ? ACCENT : COST_NEUTRAL;
 
   const padX = 2, padY = 5;
   const innerW = Math.max(0, W - padX * 2);
@@ -505,9 +504,11 @@ export function Sparkline({
   const y = (v: number) => padY + innerH * (1 - v / niceMax);
   const step = n <= 1 ? 0 : innerW / (n - 1);
 
+  const pts = data.map((d, i) => ({ x: x(i), y: y(d.value) }));
   const linePath = n
-    ? data.map((d, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(d.value).toFixed(1)}`).join(" ")
+    ? pts.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")
     : "";
+  const last = pts[n - 1];
 
   function onMove(e: React.MouseEvent<HTMLDivElement>) {
     if (!ref.current || n === 0 || allZero) return;
@@ -519,6 +520,7 @@ export function Sparkline({
   if (W === 0) return <div ref={ref} style={{ height }} />;
 
   const hv = hover !== null && !allZero ? data[hover] : null;
+  const clipRevealId = `sparkReveal-${clipId}`;
 
   return (
     <div
@@ -529,18 +531,19 @@ export function Sparkline({
     >
       <svg width={W} height={height} role="img" aria-label="Trend">
         <defs>
-          <clipPath id={`sparkReveal-${clipId}`}>
+          <clipPath id={clipRevealId}>
             <rect x="0" y="0" width={mounted ? W : 0} height={height} style={{ transition: "width 0.7s cubic-bezier(0.22,1,0.36,1)" }} />
           </clipPath>
         </defs>
-        <g clipPath={`url(#sparkReveal-${clipId})`}>
+        <g clipPath={`url(#${clipRevealId})`}>
           {allZero ? (
             <line x1={padX} y1={height / 2} x2={W - padX} y2={height / 2} stroke={color} strokeWidth={2} opacity={0.25} />
           ) : (
             <path d={linePath} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
           )}
         </g>
-        {hv && <circle cx={x(hover!)} cy={y(hv.value)} r={3} fill="#fff" stroke={color} strokeWidth={2} />}
+        {!allZero && last && <circle cx={last.x} cy={last.y} r={2.5} fill={color} />}
+        {hv && <circle cx={x(hover!)} cy={y(hv.value)} r={3.5} fill="#fff" stroke={color} strokeWidth={2} />}
       </svg>
 
       {hv && (
@@ -555,5 +558,40 @@ export function Sparkline({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Trend vs. the series' own recent average — e.g. the last day/month in a
+ * sparkline compared to how the points before it were running. Returns null
+ * when there isn't enough history to say anything meaningful.
+ */
+export function trendPct(data: ChartPoint[]): number | null {
+  if (data.length < 2) return null;
+  const last = data[data.length - 1].value;
+  const prior = data.slice(0, -1);
+  const priorAvg = prior.reduce((s, d) => s + d.value, 0) / prior.length;
+  if (priorAvg === 0) return null;
+  return ((last - priorAvg) / priorAvg) * 100;
+}
+
+/**
+ * Small ▲/▼ + percent chip — turns a sparkline's shape into a number you can
+ * read at a glance. Arrow direction always follows the raw trend; color
+ * follows whether that direction is good news, which flips for cost
+ * categories (rising spend is bad, not green) via `risingIsGood`.
+ */
+export function TrendBadge({ pct, risingIsGood = true }: { pct: number | null; risingIsGood?: boolean }) {
+  if (pct === null) return null;
+  const isUp = pct >= 0;
+  const isGood = isUp === risingIsGood;
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
+        isGood ? "bg-success-tint text-success" : "bg-danger-tint text-danger"
+      }`}
+    >
+      {isUp ? "▲" : "▼"} {Math.abs(pct).toFixed(1)}%
+    </span>
   );
 }

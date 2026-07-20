@@ -6,15 +6,27 @@ import { api } from "@/lib/api";
 import { formatMoney, toNum, monthLabel, cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Receipt, Wallet, Users, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { EmptyState, ErrorState } from "@/components/states";
-import { TrendChart, Sparkline } from "@/components/charts";
+import {
+  TrendChart,
+  Sparkline,
+  trendPct,
+  TrendBadge,
+  SUCCESS,
+  COST_PURCHASING,
+  COST_EXPENSES,
+  COST_SALARY,
+} from "@/components/charts";
 import { dashboardCache, DASH_KEY, type DashboardData, type Period } from "@/lib/dashboard-cache";
 import { availableYears, yearSlice, sumSpark } from "@/lib/overview-sparklines";
 
-const PERIODS: { key: Period; label: string; word: string }[] = [
+const PERIODS_BEFORE_YEAR: { key: Period; label: string; word: string }[] = [
   { key: "today", label: "Today", word: "today" },
   { key: "month", label: "This month", word: "this month" },
+];
+const PERIODS_AFTER_YEAR: { key: Period; label: string; word: string }[] = [
   { key: "all", label: "All time", word: "all time" },
 ];
+const PERIODS = [...PERIODS_BEFORE_YEAR, ...PERIODS_AFTER_YEAR];
 
 /** The period toggle's full set of states — "year" isn't a PeriodTotals key (it has no
  * server-precomputed sum), it's derived client-side from sparklines.all instead. */
@@ -107,11 +119,13 @@ export default function DashboardPage() {
   const isProfit = profit >= 0;
 
   // "Money in" vs "money out" — the mental model that works for accountants and non-accountants alike.
+  // Each card gets the same color it already wears in the P&L cost donut, so the
+  // vocabulary is consistent across the app instead of a single flat "cost" gray.
   const statCards = [
-    { cat: "sales" as const, label: "Sales", value: formatMoney(salesV), icon: TrendingUp, flow: "in" as const, hint: "Money in" },
-    { cat: "purchasing" as const, label: "Purchasing", value: formatMoney(purchV), icon: TrendingDown, flow: "out" as const, hint: "Money out" },
-    { cat: "expenses" as const, label: "Expenses", value: formatMoney(expV), icon: Receipt, flow: "out" as const, hint: "Money out" },
-    { cat: "salary" as const, label: "Salary paid", value: formatMoney(salV), icon: Wallet, flow: "out" as const, hint: "Money out" },
+    { cat: "sales" as const, label: "Sales", value: formatMoney(salesV), icon: TrendingUp, flow: "in" as const, hint: "Money in", color: SUCCESS },
+    { cat: "purchasing" as const, label: "Purchasing", value: formatMoney(purchV), icon: TrendingDown, flow: "out" as const, hint: "Money out", color: COST_PURCHASING },
+    { cat: "expenses" as const, label: "Expenses", value: formatMoney(expV), icon: Receipt, flow: "out" as const, hint: "Money out", color: COST_EXPENSES },
+    { cat: "salary" as const, label: "Salary paid", value: formatMoney(salV), icon: Wallet, flow: "out" as const, hint: "Money out", color: COST_SALARY },
   ];
 
   return (
@@ -127,7 +141,7 @@ export default function DashboardPage() {
         {/* Period toggle — rescopes the sales/cost/profit figures and sparklines below */}
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex items-center rounded-lg border border-line-strong bg-surface p-0.5 shadow-btn">
-            {PERIODS.map((p) => (
+            {PERIODS_BEFORE_YEAR.map((p) => (
               <button
                 key={p.key}
                 onClick={() => setPeriodKey(p.key)}
@@ -149,13 +163,26 @@ export default function DashboardPage() {
                   periodKey === "year" ? "bg-accent text-white shadow-btn" : "text-muted hover:text-ink",
                 )}
               >
-                This year
+                Year
               </button>
             )}
+            {PERIODS_AFTER_YEAR.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => setPeriodKey(p.key)}
+                aria-pressed={periodKey === p.key}
+                className={cn(
+                  "px-3 py-1.5 text-[12.5px] font-medium rounded-md transition-colors",
+                  periodKey === p.key ? "bg-accent text-white shadow-btn" : "text-muted hover:text-ink",
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
           {periodKey === "year" && years.length > 0 && (
             <select
-              className="select !w-auto !py-1.5 !text-[12.5px]"
+              className="select !w-auto !py-1.5 !text-[12.5px] rise"
               value={year}
               onChange={(e) => setYear(e.target.value)}
             >
@@ -248,6 +275,8 @@ export default function DashboardPage() {
       <div className="rise rise-2 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {statCards.map((c) => {
           const isIn = c.flow === "in";
+          const points = sparkPoints(c.cat);
+          const pct = trendPct(points);
           return (
             <div key={c.label} className="card-interactive p-4 sm:p-5">
               <div className="flex items-center justify-between gap-2">
@@ -257,6 +286,7 @@ export default function DashboardPage() {
                   </span>
                   <p className="text-[13px] font-semibold text-ink truncate">{c.label}</p>
                 </div>
+                <TrendBadge pct={pct} risingIsGood={isIn} />
               </div>
               <p className="mt-3 font-mono text-xl sm:text-[26px] leading-none font-semibold text-ink tabular-nums whitespace-nowrap">
                 {c.value}
@@ -274,7 +304,7 @@ export default function DashboardPage() {
                 {c.hint}
               </p>
               <div className="mt-3">
-                <Sparkline data={sparkPoints(c.cat)} variant={isIn ? "accent" : "neutral"} />
+                <Sparkline data={points} color={c.color} />
               </div>
             </div>
           );
