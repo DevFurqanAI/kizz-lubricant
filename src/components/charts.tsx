@@ -10,6 +10,13 @@ const DANGER = "#DC2626";
 const GRID = "rgba(38,38,47,0.08)";
 const AXIS_TEXT = "#9A9AA6";
 
+// Cost-family tokens — kept distinct from ACCENT/SUCCESS/DANGER so a reader
+// never confuses "total cost" with the sales or profit/loss vocabulary.
+export const COST_NEUTRAL = "#7C8698"; // total-cost bar in SalesCostBars
+export const COST_PURCHASING = "#B8790C";
+export const COST_EXPENSES = "#2563EB";
+export const COST_SALARY = "#0891B2";
+
 export type ChartPoint = { label: string; value: number };
 
 /** Compact money for axis ticks: 1.2M, 240K, etc. Tooltips show the exact figure. */
@@ -152,6 +159,107 @@ export function TrendChart({ data, height = 220 }: { data: ChartPoint[]; height?
         >
           <p className="text-[11px] text-muted">{hv.label}</p>
           <p className="font-mono text-[13px] font-semibold text-ink tabular-nums whitespace-nowrap">{formatMoney(hv.value)}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Sales vs. costs — grouped bars comparing money in vs. money out ────
+export type SalesCostPoint = { label: string; sales: number; cost: number };
+
+export function SalesCostBars({ data, height = 220 }: { data: SalesCostPoint[]; height?: number }) {
+  const [ref, W] = useMeasure();
+  const mounted = useMounted();
+  const [hover, setHover] = useState<number | null>(null);
+
+  const padT = 14, padB = 28, padL = 46, padR = 16;
+  const innerW = Math.max(0, W - padL - padR);
+  const innerH = height - padT - padB;
+  const n = data.length;
+
+  const niceMax = niceCeil(Math.max(1, ...data.map((d) => Math.max(d.sales, d.cost))));
+  const y = (v: number) => padT + innerH * (1 - v / niceMax);
+  const band = n > 0 ? innerW / n : innerW;
+  const groupW = Math.min(64, band * 0.66);
+  const barW = groupW / 2 - 2;
+  const groupX = (i: number) => padL + band * i + (band - groupW) / 2;
+  const stride = xLabelStride(n);
+  const ticks = [0, niceMax / 2, niceMax];
+
+  function onMove(e: React.MouseEvent<HTMLDivElement>) {
+    if (!ref.current || n === 0) return;
+    const mx = e.clientX - ref.current.getBoundingClientRect().left;
+    const i = Math.floor((mx - padL) / (band || 1));
+    setHover(i >= 0 && i < n ? i : null);
+  }
+
+  if (W === 0) return <div ref={ref} style={{ height }} />;
+  if (n === 0)
+    return (
+      <div ref={ref} className="grid place-items-center text-sm text-muted" style={{ height }}>
+        No data yet
+      </div>
+    );
+
+  const hv = hover !== null ? data[hover] : null;
+
+  return (
+    <div ref={ref} className="relative select-none" onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+      <svg width={W} height={height} role="img" aria-label="Sales versus total costs">
+        <defs>
+          <clipPath id="salesCostReveal">
+            <rect x="0" y="0" width={mounted ? W : 0} height={height} style={{ transition: "width 0.7s cubic-bezier(0.22,1,0.36,1)" }} />
+          </clipPath>
+        </defs>
+
+        {ticks.map((t, i) => (
+          <g key={i}>
+            <line x1={padL} y1={y(t)} x2={W - padR} y2={y(t)} stroke={GRID} strokeWidth={1} />
+            <text x={padL - 8} y={y(t) + 3} textAnchor="end" fontSize={10} fill={AXIS_TEXT} className="font-mono">
+              {compact(t)}
+            </text>
+          </g>
+        ))}
+
+        {data.map((d, i) =>
+          i % stride === 0 || i === n - 1 ? (
+            <text key={i} x={groupX(i) + groupW / 2} y={height - 8} textAnchor="middle" fontSize={10} fill={AXIS_TEXT}>
+              {d.label}
+            </text>
+          ) : null,
+        )}
+
+        <g clipPath="url(#salesCostReveal)">
+          {data.map((d, i) => {
+            const gx = groupX(i);
+            const fade = hover === null || hover === i ? 1 : 0.4;
+            return (
+              <g key={i} style={{ transition: "opacity 0.15s" }} opacity={fade}>
+                <rect x={gx} y={y(d.sales)} width={barW} height={Math.max(2, innerH - (y(d.sales) - padT))} rx={3} fill={ACCENT} />
+                <rect x={gx + barW + 4} y={y(d.cost)} width={barW} height={Math.max(2, innerH - (y(d.cost) - padT))} rx={3} fill={COST_NEUTRAL} />
+              </g>
+            );
+          })}
+        </g>
+      </svg>
+
+      {hv && (
+        <div
+          className="pointer-events-none absolute z-10 rounded-lg border border-line bg-surface px-3 py-2 shadow-pop"
+          style={{ left: Math.min(Math.max(groupX(hover!) + groupW / 2, 70), W - 70), top: Math.min(y(hv.sales), y(hv.cost)) - 10, transform: "translate(-50%,-100%)" }}
+        >
+          <p className="text-[11px] text-muted">{hv.label}</p>
+          <p className="font-mono text-[13px] font-semibold tabular-nums whitespace-nowrap" style={{ color: ACCENT }}>
+            Sales {formatMoney(hv.sales)}
+          </p>
+          <p className="font-mono text-[13px] font-semibold tabular-nums whitespace-nowrap" style={{ color: COST_NEUTRAL }}>
+            Costs {formatMoney(hv.cost)}
+          </p>
+          <p className={`font-mono text-[12px] font-medium tabular-nums whitespace-nowrap ${hv.sales - hv.cost >= 0 ? "text-success" : "text-danger"}`}>
+            {hv.sales - hv.cost >= 0 ? "Profit " : "Loss "}
+            {formatMoney(Math.abs(hv.sales - hv.cost))}
+          </p>
         </div>
       )}
     </div>
