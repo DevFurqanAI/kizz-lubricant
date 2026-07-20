@@ -76,8 +76,7 @@ const filteredGrand = useMemo(() => recomputeGrand(filteredRows), [filteredRows]
   - `all`: no filtering.
   - `custom`: inclusive slice between `from` and `to`.
 - `recomputeGrand` re-sums `filteredRows` the same way the API's `grand` reducer already does (mirrors the logic in `src/app/api/pnl/route.ts`, duplicated client-side since it's a simple reduce over already-fetched data — not worth a round-trip).
-- The grand-total banner, all three charts, and the monthly table all read from `filteredRows` / `filteredGrand` instead of `data.rows` / `data.grand`.
-- Export-to-Excel (`exportXlsx`) continues to export the **full** `data.rows`/`data.grand` (unfiltered) — the export is a complete record, not a view of the current filter. *(Flagging this assumption — confirm before implementation if the export should instead respect the active filter.)*
+- The grand-total banner, all three charts, the monthly table, and the Excel export all read from `filteredRows` / `filteredGrand` instead of `data.rows` / `data.grand` — the export mirrors exactly what's on screen for the active range.
 
 ### Edge cases
 
@@ -94,4 +93,4 @@ No existing unit tests cover `charts.tsx` (it's presentational/interactive SVG c
 - Verify donut percentages sum to 100% and the center total matches the sum of the three cost categories for the selected range.
 - Check empty states: no data at all, and a custom range that lands on zero months.
 - Check responsive behavior at mobile width (the existing grid already collapses to a single column below `xl`).
-- Confirm the Excel export still produces the full-history file regardless of the active filter (per the assumption above).
+- Confirm the Excel export reflects the currently active range filter (rows and grand total match what's on screen), including the exported filename or a sheet note indicating the range covered.
