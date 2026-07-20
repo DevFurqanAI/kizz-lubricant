@@ -477,3 +477,82 @@ export function CostDonut({ data, height = 220 }: { data: DonutSlice[]; height?:
     </div>
   );
 }
+
+// ── Sparkline — compact trend line for stat cards, no axes/gridlines ───
+export function Sparkline({
+  data,
+  variant = "accent",
+  height = 44,
+}: {
+  data: ChartPoint[];
+  variant?: "accent" | "neutral";
+  height?: number;
+}) {
+  const [ref, W] = useMeasure();
+  const mounted = useMounted();
+  const [hover, setHover] = useState<number | null>(null);
+  const color = variant === "accent" ? ACCENT : COST_NEUTRAL;
+
+  const padX = 2, padY = 5;
+  const innerW = Math.max(0, W - padX * 2);
+  const innerH = height - padY * 2;
+  const n = data.length;
+  const allZero = n === 0 || data.every((d) => d.value === 0);
+  const niceMax = niceCeil(Math.max(1, ...data.map((d) => d.value)));
+
+  const x = (i: number) => (n <= 1 ? padX + innerW / 2 : padX + (innerW * i) / (n - 1));
+  const y = (v: number) => padY + innerH * (1 - v / niceMax);
+  const step = n <= 1 ? 0 : innerW / (n - 1);
+
+  const linePath = n
+    ? data.map((d, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(d.value).toFixed(1)}`).join(" ")
+    : "";
+
+  function onMove(e: React.MouseEvent<HTMLDivElement>) {
+    if (!ref.current || n === 0 || allZero) return;
+    const mx = e.clientX - ref.current.getBoundingClientRect().left;
+    const i = Math.max(0, Math.min(n - 1, Math.round((mx - padX) / (step || 1))));
+    setHover(i);
+  }
+
+  if (W === 0) return <div ref={ref} style={{ height }} />;
+
+  const hv = hover !== null && !allZero ? data[hover] : null;
+
+  return (
+    <div
+      ref={ref}
+      className="relative select-none"
+      onMouseMove={onMove}
+      onMouseLeave={() => setHover(null)}
+    >
+      <svg width={W} height={height} role="img" aria-label="Trend">
+        <defs>
+          <clipPath id="sparkReveal">
+            <rect x="0" y="0" width={mounted ? W : 0} height={height} style={{ transition: "width 0.7s cubic-bezier(0.22,1,0.36,1)" }} />
+          </clipPath>
+        </defs>
+        <g clipPath="url(#sparkReveal)">
+          {allZero ? (
+            <line x1={padX} y1={height / 2} x2={W - padX} y2={height / 2} stroke={color} strokeWidth={2} opacity={0.25} />
+          ) : (
+            <path d={linePath} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+          )}
+        </g>
+        {hv && <circle cx={x(hover!)} cy={y(hv.value)} r={3} fill="#fff" stroke={color} strokeWidth={2} />}
+      </svg>
+
+      {hv && (
+        <div
+          className="pointer-events-none absolute z-10 rounded-lg border border-line bg-surface px-2.5 py-1.5 shadow-pop"
+          style={{ left: Math.min(Math.max(x(hover!), 50), W - 50), top: y(hv.value) - 10, transform: "translate(-50%,-100%)" }}
+        >
+          <p className="text-[10px] text-muted">{hv.label}</p>
+          <p className="font-mono text-[12px] font-semibold text-ink tabular-nums whitespace-nowrap">
+            {formatMoney(hv.value)}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
