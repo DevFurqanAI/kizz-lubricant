@@ -16,8 +16,8 @@ export const XLSX_MIME =
 
 // Brand palette (ARGB).
 const INK = "FF15161A";
-const ACCENT = "FF6D5EF0";
-const ACCENT_TINT = "FFEDEBFD";
+const ACCENT = "FFE2540C";
+const ACCENT_TINT = "FFFDEEE6";
 const STRIPE = "FFF7F8FA";
 const LABEL_BG = "FFEEF0F3";
 const BORDER = "FFE2E4E8";

@@ -3,8 +3,8 @@
 import { useRef, useState, useLayoutEffect, useEffect } from "react";
 import { formatMoney } from "@/lib/utils";
 
-// ── Design tokens (graphite-violet) ─────────────────────────────────
-const ACCENT = "#6D5EF0";
+// ── Design tokens (graphite-ember) ──────────────────────────────────
+const ACCENT = "#E2540C";
 const SUCCESS = "#15914B";
 const DANGER = "#DC2626";
 const GRID = "rgba(38,38,47,0.08)";

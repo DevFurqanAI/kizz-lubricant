@@ -1,10 +1,10 @@
 import type { Config } from "tailwindcss";
 
 /**
- * "Graphite violet" — premium finance-grade design tokens.
- * Tonally-unified neutrals (a whisper of violet in the near-black ink),
- * a single restrained accent, and a layered elevation system so white
- * surfaces actually sit on the canvas.
+ * "Graphite ember" — premium finance-grade design tokens, keyed to the
+ * Kizz Lubricant mark (graphite gear + orange-red flame/drop).
+ * Tonally-unified neutrals, a single restrained orange-red accent, and a
+ * layered elevation system so white surfaces actually sit on the canvas.
  */
 const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
@@ -26,20 +26,20 @@ const config: Config = {
         line: "#E6E7EE", // hairline dividers/borders
         "line-strong": "#D9DAE2", // input borders
 
-        // Accent — soft violet, used sparingly
-        accent: "#6D5EF0",
-        "accent-hover": "#5B4BE3",
-        "accent-ink": "#4A3BC7", // accent text on light tints (contrast)
-        "accent-tint": "#EEECFE",
-        "accent-tint-strong": "#E4E1FC", // hero surface
+        // Accent — orange-red flame/drop from the mark, used sparingly
+        accent: "#E2540C",
+        "accent-hover": "#C2440A",
+        "accent-ink": "#9C3A0A", // accent text on light tints (contrast)
+        "accent-tint": "#FDEEE6",
+        "accent-tint-strong": "#FADCC9", // hero surface
 
         // Semantic (kept distinct from the accent family)
         success: "#15914B",
         "success-tint": "#E9F8EF",
         danger: "#DC2626",
         "danger-tint": "#FEF1F1",
-        warning: "#C2740B",
-        "warning-tint": "#FDF3E7",
+        warning: "#B8790C", // amber-gold, echoes the mark's "LUBRICANT" wordmark
+        "warning-tint": "#FBF0DC",
       },
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],
@@ -63,8 +63,8 @@ const config: Config = {
           "0 2px 4px -1px rgba(23,22,29,0.06), 0 12px 28px -6px rgba(23,22,29,0.12)",
         pop: "0 16px 48px -12px rgba(23,22,29,0.24), 0 2px 6px -2px rgba(23,22,29,0.10)",
         btn: "0 1px 2px 0 rgba(23,22,29,0.10), inset 0 1px 0 0 rgba(255,255,255,0.10)",
-        "accent-glow": "0 6px 20px -6px rgba(109,94,240,0.55)",
-        focus: "0 0 0 3px rgba(109,94,240,0.28)",
+        "accent-glow": "0 6px 20px -6px rgba(226,84,12,0.55)",
+        focus: "0 0 0 3px rgba(226,84,12,0.28)",
       },
     },
   },

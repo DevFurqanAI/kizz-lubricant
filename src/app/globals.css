@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --ring: rgba(109, 94, 240, 0.45);
+  --ring: rgba(226, 84, 12, 0.45);
 }
 
 html,
@@ -19,7 +19,7 @@ body {
 }
 
 ::selection {
-  background: rgba(109, 94, 240, 0.18);
+  background: rgba(226, 84, 12, 0.18);
   color: #17161d;
 }
 
@@ -48,7 +48,7 @@ body {
   transition: background-color 0.2s;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(109, 94, 240, 0.55);
+  background: rgba(226, 84, 12, 0.55);
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-corner {
