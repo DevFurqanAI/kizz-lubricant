@@ -15,6 +15,7 @@ import { useConfirm } from "@/components/confirm";
 import { EmptyState, ErrorState } from "@/components/states";
 import { validateLedgerEntry, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 import { DateRangeFilter } from "@/components/date-range-filter";
+import { AmountRangeFilter } from "@/components/amount-range-filter";
 import { resolveDateRange, describeDateRange, type DateRangeSelection } from "@/lib/date-range";
 
 const VISIBLE_LIMIT = 100; // progressively reveal older rows beyond this
@@ -53,6 +54,8 @@ export default function CustomerLedgerPage() {
   const [error, setError] = useState(false);
   const [showAll, setShowAll] = useState(false); // progressive render for long ledgers
   const [dateRange, setDateRange] = useState<DateRangeSelection>({ preset: "all" });
+  const [amountMin, setAmountMin] = useState("");
+  const [amountMax, setAmountMax] = useState("");
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -294,11 +297,14 @@ export default function CustomerLedgerPage() {
   const currentBalance = lastEntry ? toNum(lastEntry.balance) : 0;
 
   const { from, to } = resolveDateRange(dateRange);
-  const isFiltered = dateRange.preset !== "all";
+  const min = amountMin ? Number(amountMin) : null;
+  const max = amountMax ? Number(amountMax) : null;
+  const isFiltered = dateRange.preset !== "all" || min !== null || max !== null;
   const filteredEntries = isFiltered
     ? entries.filter((e) => {
         const d = e.date.slice(0, 10);
-        return (!from || d >= from) && (!to || d <= to);
+        const amt = toNum(e.debit) + toNum(e.credit);
+        return (!from || d >= from) && (!to || d <= to) && (min === null || amt >= min) && (max === null || amt <= max);
       })
     : entries;
 
@@ -394,7 +400,10 @@ export default function CustomerLedgerPage() {
         </div>
       </div>
 
-      <DateRangeFilter value={dateRange} onChange={setDateRange} />
+      <div className="flex items-center gap-3 flex-wrap">
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
+        <AmountRangeFilter min={amountMin} max={amountMax} onChange={(min, max) => { setAmountMin(min); setAmountMax(max); }} />
+      </div>
 
       {showPayForm && (
         <div className="card p-6">
