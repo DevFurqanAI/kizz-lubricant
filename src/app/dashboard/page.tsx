@@ -121,7 +121,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-[26px] font-semibold text-ink">Overview</h1>
           <p className="mt-1 text-sm text-muted">
-            A snapshot of your whole business — everything you&apos;ve sold, spent, and are still owed.
+            A snapshot of your whole business everything you&apos;ve sold, spent, and are still owed.
           </p>
         </div>
         {/* Period toggle — rescopes the sales/cost/profit figures and sparklines below */}
