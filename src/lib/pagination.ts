@@ -12,13 +12,24 @@ export type ListParams = {
   dir: "asc" | "desc";
   from: string | null; // inclusive ISO date lower bound, or null = unbounded
   to: string | null; // inclusive ISO date upper bound, or null = unbounded
+  amountMin: number | null; // inclusive amount lower bound, or null = unbounded
+  amountMax: number | null; // inclusive amount upper bound, or null = unbounded
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Only accept a well-formed "YYYY-MM-DD" — anything else is treated as absent. */
+/** Only accept a well-formed "YYYY-MM-DD" that's also a real calendar date. */
 function parseIsoDate(v: string | null): string | null {
-  return v && ISO_DATE.test(v) ? v : null;
+  if (!v || !ISO_DATE.test(v)) return null;
+  const d = new Date(v + "T00:00:00Z");
+  return d.toISOString().slice(0, 10) === v ? v : null;
+}
+
+/** Only accept a finite, non-negative number — anything else is treated as absent. */
+function parseAmount(v: string | null): number | null {
+  if (v === null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 /**
@@ -41,5 +52,8 @@ export function parseListParams(
   let from = parseIsoDate(sp.get("from"));
   let to = parseIsoDate(sp.get("to"));
   if (from && to && from > to) [from, to] = [to, from];
-  return { search, page, limit, offset: (page - 1) * limit, sort, dir, from, to };
+  let amountMin = parseAmount(sp.get("amountMin"));
+  let amountMax = parseAmount(sp.get("amountMax"));
+  if (amountMin !== null && amountMax !== null && amountMin > amountMax) [amountMin, amountMax] = [amountMax, amountMin];
+  return { search, page, limit, offset: (page - 1) * limit, sort, dir, from, to, amountMin, amountMax };
 }

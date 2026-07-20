@@ -15,7 +15,7 @@ import { useConfirm } from "@/components/confirm";
 import { EmptyState, ErrorState } from "@/components/states";
 import { validateLedgerEntry, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 import { DateRangeFilter } from "@/components/date-range-filter";
-import { resolveDateRange, type DateRangeSelection } from "@/lib/date-range";
+import { resolveDateRange, describeDateRange, type DateRangeSelection } from "@/lib/date-range";
 
 const VISIBLE_LIMIT = 100; // progressively reveal older rows beyond this
 
@@ -507,7 +507,7 @@ export default function CustomerLedgerPage() {
                       icon={ReceiptText}
                       compact
                       title={isFiltered ? "No entries in this range" : "No entries yet"}
-                      description={isFiltered ? "Try a wider date range." : "Use “+ Add Entry” to record this customer's first transaction."}
+                      description={isFiltered ? `No entries between ${describeDateRange(dateRange)}.` : "Use “+ Add Entry” to record this customer's first transaction."}
                     />
                   </td>
                 </tr>

@@ -53,3 +53,26 @@ export function describeDateRange(sel: DateRangeSelection): string {
     }
   }
 }
+
+const PRESET_KEYS = ["7d", "30d", "90d", "ytd", "all"] as const;
+
+/** DateRangeSelection -> URL query params (spread into a buildQueryString call). */
+export function encodeDateRange(sel: DateRangeSelection): { range: string; from?: string; to?: string } {
+  if (sel.preset === "custom") return { range: "custom", from: sel.from, to: sel.to };
+  return { range: sel.preset };
+}
+
+/** URL query params -> DateRangeSelection, defaulting to "all" for anything absent/malformed. */
+export function decodeDateRange(sp: URLSearchParams): DateRangeSelection {
+  const range = sp.get("range");
+  if (range === "custom") {
+    const from = sp.get("from");
+    const to = sp.get("to");
+    if (from && to) return { preset: "custom", from, to };
+    return { preset: "all" };
+  }
+  if (range && (PRESET_KEYS as readonly string[]).includes(range)) {
+    return { preset: range as (typeof PRESET_KEYS)[number] };
+  }
+  return { preset: "all" };
+}
