@@ -4,9 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import { formatMoney, monthLabel } from "@/lib/utils";
 import { createLocalCache } from "@/lib/localCache";
+import { saveOrShareBlob } from "@/lib/file-download";
 import { EmptyState, ErrorState } from "@/components/states";
 import { ProfitBars, TrendChart } from "@/components/charts";
-import { BarChart3 } from "lucide-react";
+import { useToast } from "@/components/toast";
+import { BarChart3, FileSpreadsheet } from "lucide-react";
 
 type MonthRow = {
   month: string;
@@ -31,6 +33,8 @@ export default function PnlPage() {
   const [data, setData] = useState<PnlData | null>(cached0 ?? null);
   const [loading, setLoading] = useState(!cached0);
   const [error, setError] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const toast = useToast();
 
   const load = useCallback(() => {
     setError(false);
@@ -61,11 +65,33 @@ export default function PnlPage() {
   const g = data?.grand;
   const isProfit = (g?.profit ?? 0) >= 0;
 
+  const exportXlsx = async () => {
+    if (!data || !g) return;
+    setExporting(true);
+    try {
+      const { buildPnlXlsx } = await import("@/lib/reports-xlsx");
+      const blob = await buildPnlXlsx(data.rows, g);
+      await saveOrShareBlob(blob, `profit_loss_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch {
+      toast.error("Couldn't export profit & loss");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-[26px] font-semibold text-ink">Profit &amp; Loss</h1>
-        <p className="mt-1 text-sm text-muted">Month by month: what you sold, minus everything you spent, and what was left.</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-[26px] font-semibold text-ink">Profit &amp; Loss</h1>
+          <p className="mt-1 text-sm text-muted">Month by month: what you sold, minus everything you spent, and what was left.</p>
+        </div>
+        {data && data.rows.length > 0 && (
+          <button onClick={exportXlsx} disabled={exporting} className="btn-secondary">
+            <FileSpreadsheet className="w-4 h-4" strokeWidth={2} />
+            {exporting ? "Exporting…" : "Export Excel"}
+          </button>
+        )}
       </div>
 
       {/* Grand total banner */}

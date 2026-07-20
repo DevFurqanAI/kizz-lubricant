@@ -1,10 +1,11 @@
 
 "use client";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { api } from "@/lib/api";
+import { api, fetchAllRows } from "@/lib/api";
 import { formatMoney, fmtDate } from "@/lib/utils";
 import { getCache, setCache, clearCache } from "@/lib/expenses-cache";
-import { Plus, Receipt, Trash2, X, Pencil, Check } from "lucide-react";
+import { saveOrShareBlob } from "@/lib/file-download";
+import { Plus, Receipt, Trash2, X, Pencil, Check, FileSpreadsheet } from "lucide-react";
 import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
 import { Pagination } from "@/components/pagination";
@@ -41,6 +42,7 @@ export default function ExpensesPage() {
   const [editSaving, setEditSaving] = useState(false);
 
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [exporting, setExporting] = useState(false);
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -159,6 +161,20 @@ export default function ExpensesPage() {
   // Average monthly spend over the whole (filtered) dataset, not just the current page.
   const avgPerMonth = useMemo(() => (months ? total / months : 0), [months, total]);
 
+  const exportXlsx = async () => {
+    setExporting(true);
+    try {
+      const all = await fetchAllRows<Row>("/expenses", { search, sort: sort.col, dir: sort.dir });
+      const { buildExpensesXlsx } = await import("@/lib/reports-xlsx");
+      const blob = await buildExpensesXlsx(all, search ? `Filtered: "${search}"` : undefined);
+      await saveOrShareBlob(blob, `expenses_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch {
+      toast.error("Couldn't export expenses");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-10">
       {/* ── Header ─────────────────────────────────────────── */}
@@ -170,10 +186,16 @@ export default function ExpensesPage() {
           </div>
           <p className="mt-1 text-sm text-muted">Plant rent, petrol, repairs and other running costs — money going out.</p>
         </div>
-        <button onClick={() => setShowForm((s) => !s)} className="btn-primary">
-          <Plus className="w-4 h-4" strokeWidth={2.5} />
-          Add expense
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={exportXlsx} disabled={exporting || rows.length === 0} className="btn-secondary">
+            <FileSpreadsheet className="w-4 h-4" strokeWidth={2} />
+            {exporting ? "Exporting…" : "Export Excel"}
+          </button>
+          <button onClick={() => setShowForm((s) => !s)} className="btn-primary">
+            <Plus className="w-4 h-4" strokeWidth={2.5} />
+            Add expense
+          </button>
+        </div>
       </div>
 
       {/* ── Stat strip ─────────────────────────────────────── */}

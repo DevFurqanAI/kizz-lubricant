@@ -1,17 +1,18 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api, fetchAllRows } from "@/lib/api";
 import { formatMoney, toNum, fmtDate } from "@/lib/utils";
 import { createLocalCache } from "@/lib/localCache";
 import { customerDetailCache } from "@/lib/customercache";
+import { saveOrShareBlob } from "@/lib/file-download";
 import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
 import { Pagination } from "@/components/pagination";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
 import { SortHeader, type Sort, nextSort } from "@/components/sort-header";
 import { SearchInput } from "@/components/search-input";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, FileSpreadsheet } from "lucide-react";
 import { validateSale, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 type SaleRow = {
@@ -65,6 +66,7 @@ export default function SalesPage() {
   const autoAmt = useRef("");
   const editAutoAmt = useRef("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [exporting, setExporting] = useState(false);
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -239,6 +241,20 @@ export default function SalesPage() {
     } catch { setRows(prevRows); toast.error("Couldn't update sale"); }
   };
 
+  const exportXlsx = async () => {
+    setExporting(true);
+    try {
+      const all = await fetchAllRows<SaleRow>("/sales", { search, sort: sort.col, dir: sort.dir });
+      const { buildSalesXlsx } = await import("@/lib/reports-xlsx");
+      const blob = await buildSalesXlsx(all, search ? `Filtered: "${search}"` : undefined);
+      await saveOrShareBlob(blob, `sales_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch {
+      toast.error("Couldn't export sales");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -249,7 +265,13 @@ export default function SalesPage() {
           </div>
           <p className="mt-1 text-sm text-muted">Every sale made from the factory — your money coming in.</p>
         </div>
-        <button onClick={() => setShowForm(s => !s)} className="btn-primary">+ Add Sale</button>
+        <div className="flex items-center gap-2">
+          <button onClick={exportXlsx} disabled={exporting || rows.length === 0} className="btn-secondary">
+            <FileSpreadsheet className="w-4 h-4" strokeWidth={2} />
+            {exporting ? "Exporting…" : "Export Excel"}
+          </button>
+          <button onClick={() => setShowForm(s => !s)} className="btn-primary">+ Add Sale</button>
+        </div>
       </div>
 
       {showForm && (

@@ -184,6 +184,16 @@ export async function buildLedgerBlob(customer: FullCustomer): Promise<Blob> {
   // Content-based widths (+padding), clamped to a comfortable range.
   widths.forEach((w, i) => { ws.getColumn(i + 1).width = Math.min(30, Math.max(10, w + 3)); });
 
+  // Landscape + fit-to-width so every column (including Balance) prints on
+  // one page — only the row count should ever spill onto a second page.
+  ws.pageSetup = {
+    orientation: "landscape",
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    margins: { left: 0.3, right: 0.3, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
+  };
+
   const buffer = await wb.xlsx.writeBuffer();
   return new Blob([buffer], { type: XLSX_MIME });
 }

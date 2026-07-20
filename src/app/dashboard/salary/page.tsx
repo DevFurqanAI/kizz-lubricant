@@ -3,15 +3,16 @@
 
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { api } from "@/lib/api";
+import { api, fetchAllRows } from "@/lib/api";
 import { formatMoney, toNum, fmtDate } from "@/lib/utils";
 import { createLocalCache } from "@/lib/localCache";
+import { saveOrShareBlob } from "@/lib/file-download";
 import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
 import { Pagination } from "@/components/pagination";
 import { EmptyState, ErrorState } from "@/components/states";
 import { SearchInput } from "@/components/search-input";
-import { Wallet, ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react";
+import { Wallet, ArrowDownWideNarrow, ArrowUpNarrowWide, FileSpreadsheet } from "lucide-react";
 import { validateSalary, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 type Row = { id: number; date: string; employee: string; amount: string; account: string };
@@ -104,6 +105,7 @@ export default function SalaryPage() {
   const [editForm, setEditForm] = useState<EditFormT>({ date: "", employee: "", amount: "", account: "" });
   const [viewStyle, setViewStyle] = useState<ViewStyle>("table");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [exporting, setExporting] = useState(false);
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -184,6 +186,20 @@ export default function SalaryPage() {
 
   const cycleStyle = () => setViewStyle(s => VIEW_STYLES[(VIEW_STYLES.indexOf(s) + 1) % VIEW_STYLES.length]);
 
+  const exportXlsx = async () => {
+    setExporting(true);
+    try {
+      const all = await fetchAllRows<Row>("/salary", { search, sort: "date", dir });
+      const { buildSalaryXlsx } = await import("@/lib/reports-xlsx");
+      const blob = await buildSalaryXlsx(all, search ? `Filtered: "${search}"` : undefined);
+      await saveOrShareBlob(blob, `salary_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch {
+      toast.error("Couldn't export salary");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -194,7 +210,13 @@ export default function SalaryPage() {
           </div>
           <p className="mt-1 text-sm text-muted">Staff salary payments, tracked by employee and transfer method — money going out.</p>
         </div>
-        <button onClick={() => setShowForm(s => !s)} className="btn-primary">+ Add Payment</button>
+        <div className="flex items-center gap-2">
+          <button onClick={exportXlsx} disabled={exporting || rows.length === 0} className="btn-secondary">
+            <FileSpreadsheet className="w-4 h-4" strokeWidth={2} />
+            {exporting ? "Exporting…" : "Export Excel"}
+          </button>
+          <button onClick={() => setShowForm(s => !s)} className="btn-primary">+ Add Payment</button>
+        </div>
       </div>
 
       {/* ── Total paid ─────────────────────────────────────── */}

@@ -28,3 +28,25 @@ export const api = {
     req<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
   del: <T>(path: string) => req<T>(path, { method: "DELETE" }),
 };
+
+/**
+ * Walks every page of a `{ rows, count }` list endpoint and returns the full
+ * row set for the given filter — used by Excel exports, which need every
+ * matching record, not just the current page (list endpoints cap at 100/page).
+ */
+export async function fetchAllRows<T>(
+  path: string,
+  params: Record<string, string>,
+): Promise<T[]> {
+  const limit = 100;
+  const rows: T[] = [];
+  let page = 1;
+  for (;;) {
+    const qs = new URLSearchParams({ ...params, page: String(page), limit: String(limit) });
+    const data = await api.get<{ rows: T[]; count: number }>(`${path}?${qs}`);
+    rows.push(...data.rows);
+    if (data.rows.length === 0 || rows.length >= data.count) break;
+    page++;
+  }
+  return rows;
+}

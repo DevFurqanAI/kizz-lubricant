@@ -2,16 +2,17 @@
 
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { api } from "@/lib/api";
+import { api, fetchAllRows } from "@/lib/api";
 import { formatMoney, fmtDate } from "@/lib/utils";
 import { createLocalCache } from "@/lib/localCache"
+import { saveOrShareBlob } from "@/lib/file-download";
 import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
 import { Pagination } from "@/components/pagination";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
 import { SortHeader, type Sort, nextSort } from "@/components/sort-header";
 import { SearchInput } from "@/components/search-input";
-import { TrendingDown } from "lucide-react";
+import { TrendingDown, FileSpreadsheet } from "lucide-react";
 import { validateAmountEntry, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 type Row = { id: number; date: string; detail: string; amount: string };
@@ -40,6 +41,7 @@ export default function PurchasingPage() {
   const [editForm, setEditForm] = useState({ date: "", detail: "", amount: "" });
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [exporting, setExporting] = useState(false);
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -123,6 +125,20 @@ export default function PurchasingPage() {
     catch { setRows(prevRows); toast.error("Couldn't update purchase"); }
   };
 
+  const exportXlsx = async () => {
+    setExporting(true);
+    try {
+      const all = await fetchAllRows<Row>("/purchasing", { search, sort: sort.col, dir: sort.dir });
+      const { buildPurchasingXlsx } = await import("@/lib/reports-xlsx");
+      const blob = await buildPurchasingXlsx(all, search ? `Filtered: "${search}"` : undefined);
+      await saveOrShareBlob(blob, `purchasing_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch {
+      toast.error("Couldn't export purchasing");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -133,7 +149,13 @@ export default function PurchasingPage() {
           </div>
           <p className="mt-1 text-sm text-muted">Oil, drums, chemicals and other stock you buy — money going out.</p>
         </div>
-        <button onClick={() => setShowForm(s => !s)} className="btn-primary">+ Add Purchasing</button>
+        <div className="flex items-center gap-2">
+          <button onClick={exportXlsx} disabled={exporting || rows.length === 0} className="btn-secondary">
+            <FileSpreadsheet className="w-4 h-4" strokeWidth={2} />
+            {exporting ? "Exporting…" : "Export Excel"}
+          </button>
+          <button onClick={() => setShowForm(s => !s)} className="btn-primary">+ Add Purchasing</button>
+        </div>
       </div>
 
       {showForm && (

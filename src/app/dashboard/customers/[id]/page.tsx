@@ -9,6 +9,7 @@ import { formatMoney, toNum, fmtDate } from "@/lib/utils";
 import type { CustomerEntry } from "@/db/schema";
 import { FileSpreadsheet, MessageCircle, ReceiptText } from "lucide-react";
 import { customerDetailCache as customerCache, type FullCustomer } from "@/lib/customercache";
+import { saveOrShareBlob } from "@/lib/file-download";
 import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
 import { EmptyState, ErrorState } from "@/components/states";
@@ -249,29 +250,7 @@ export default function CustomerLedgerPage() {
       const blob = await buildLedgerBlob(customer);
       const safeName = customer.name.replace(/[^a-z0-9]+/gi, "_");
       const filename = `${safeName}_ledger_${new Date().toISOString().slice(0, 10)}.xlsx`;
-      const file = new File([blob], filename, { type: blob.type });
-
-      // On phones, open the native share sheet \u2014 it offers both "Save to
-      // Files" and opening straight in Google Sheets / Drive, in one place.
-      if (navigator.canShare?.({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file], title: filename });
-          return;
-        } catch (err) {
-          if ((err as Error)?.name === "AbortError") return; // user dismissed
-          // any other failure \u2192 fall through to a plain download
-        }
-      }
-
-      // Desktop (or no share support): download the file to the device.
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      await saveOrShareBlob(blob, filename);
     } finally {
       setExporting(false);
     }
