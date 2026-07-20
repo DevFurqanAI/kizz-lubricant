@@ -6,14 +6,24 @@ import { api } from "@/lib/api";
 import { formatMoney, toNum, monthLabel, cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Receipt, Wallet, Users, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { EmptyState, ErrorState } from "@/components/states";
-import { TrendChart } from "@/components/charts";
+import { TrendChart, Sparkline } from "@/components/charts";
 import { dashboardCache, DASH_KEY, type DashboardData, type Period } from "@/lib/dashboard-cache";
+import { availableYears, yearSlice, sumSpark } from "@/lib/overview-sparklines";
 
 const PERIODS: { key: Period; label: string; word: string }[] = [
   { key: "today", label: "Today", word: "today" },
   { key: "month", label: "This month", word: "this month" },
   { key: "all", label: "All time", word: "all time" },
 ];
+
+/** The period toggle's full set of states — "year" isn't a PeriodTotals key (it has no
+ * server-precomputed sum), it's derived client-side from sparklines.all instead. */
+type ToggleKey = Period | "year";
+
+/** "2026-07-05" → "05 Jul" — compact day label for daily sparkline tooltips. */
+function dayLabel(isoDate: string): string {
+  return new Date(isoDate + "T00:00:00").toLocaleDateString("en-PK", { day: "2-digit", month: "short" });
+}
 
 /** Plain-language meaning of a customer balance (mixed audience: term + explanation). */
 function balanceStatus(bal: number) {
@@ -29,7 +39,8 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(cached0 ?? null);
   const [loading, setLoading] = useState(!cached0);
   const [error, setError] = useState(false);
-  const [period, setPeriod] = useState<Period>("month");
+  const [periodKey, setPeriodKey] = useState<ToggleKey>("month");
+  const [year, setYear] = useState<string>("");
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) { setLoading(true); setError(false); }
@@ -50,19 +61,46 @@ export default function DashboardPage() {
     else load();
   }, [load]);
 
+  // Default the year picker to the latest year with data, once it's known —
+  // never overwrite a year the user has already picked.
+  useEffect(() => {
+    if (!data || year) return;
+    const years = availableYears(data.sparklines.all);
+    if (years.length > 0) setYear(years[years.length - 1]);
+  }, [data, year]);
+
   if (loading && !data) return <DashboardSkeleton />;
   if (error && !data) return <div className="card"><ErrorState onRetry={() => load()} /></div>;
   if (!data) return null;
 
   const { stats, topBalances } = data;
-  const revenueTrend = (data.monthlySales ?? []).map((m) => ({ label: monthLabel(m.month), value: toNum(m.total) }));
+  const revenueTrend = data.sparklines.all.sales.map((m) => ({ label: monthLabel(m.month), value: m.total }));
+  const years = availableYears(data.sparklines.all);
+
+  type Category = "sales" | "purchasing" | "expenses" | "salary";
+
+  // "This year" has no server-precomputed sum — derive it from the same monthly
+  // series the "All time" sparkline uses, the same year-filter technique as
+  // src/lib/pnl-range.ts's ytd case.
+  const periodTotal = (cat: Category): number =>
+    periodKey === "year"
+      ? (year ? sumSpark(yearSlice(data.sparklines.all[cat], year)) : 0)
+      : stats[cat][periodKey];
+
+  // Points for a category's sparkline at the currently active period/year.
+  const sparkPoints = (cat: Category) => {
+    if (periodKey === "today") return data.sparklines.today[cat].map((d) => ({ label: dayLabel(d.date), value: d.total }));
+    if (periodKey === "month") return data.sparklines.month[cat].map((d) => ({ label: dayLabel(d.date), value: d.total }));
+    if (periodKey === "year") return yearSlice(data.sparklines.all[cat], year).map((d) => ({ label: monthLabel(d.month), value: d.total }));
+    return data.sparklines.all[cat].map((d) => ({ label: monthLabel(d.month), value: d.total }));
+  };
 
   // Scope the money flows to the selected period; balances (outstanding/customers) stay current.
-  const periodWord = PERIODS.find((p) => p.key === period)!.word;
-  const salesV = stats.sales[period];
-  const purchV = stats.purchasing[period];
-  const expV = stats.expenses[period];
-  const salV = stats.salary[period];
+  const periodWord = periodKey === "year" ? (year ? `in ${year}` : "this year") : PERIODS.find((p) => p.key === periodKey)!.word;
+  const salesV = periodTotal("sales");
+  const purchV = periodTotal("purchasing");
+  const expV = periodTotal("expenses");
+  const salV = periodTotal("salary");
   const costTotal = purchV + expV + salV;
   const profit = salesV - costTotal;
   const margin = salesV > 0 ? (profit / salesV) * 100 : 0;
@@ -70,10 +108,10 @@ export default function DashboardPage() {
 
   // "Money in" vs "money out" — the mental model that works for accountants and non-accountants alike.
   const statCards = [
-    { label: "Sales", value: formatMoney(salesV), icon: TrendingUp, flow: "in" as const, hint: "Money in" },
-    { label: "Purchasing", value: formatMoney(purchV), icon: TrendingDown, flow: "out" as const, hint: "Money out" },
-    { label: "Expenses", value: formatMoney(expV), icon: Receipt, flow: "out" as const, hint: "Money out" },
-    { label: "Salary paid", value: formatMoney(salV), icon: Wallet, flow: "out" as const, hint: "Money out" },
+    { cat: "sales" as const, label: "Sales", value: formatMoney(salesV), icon: TrendingUp, flow: "in" as const, hint: "Money in" },
+    { cat: "purchasing" as const, label: "Purchasing", value: formatMoney(purchV), icon: TrendingDown, flow: "out" as const, hint: "Money out" },
+    { cat: "expenses" as const, label: "Expenses", value: formatMoney(expV), icon: Receipt, flow: "out" as const, hint: "Money out" },
+    { cat: "salary" as const, label: "Salary paid", value: formatMoney(salV), icon: Wallet, flow: "out" as const, hint: "Money out" },
   ];
 
   return (
@@ -86,21 +124,46 @@ export default function DashboardPage() {
             A snapshot of your whole business — everything you&apos;ve sold, spent, and are still owed.
           </p>
         </div>
-        {/* Period toggle — rescopes the sales/cost/profit figures below */}
-        <div className="inline-flex items-center rounded-lg border border-line-strong bg-surface p-0.5 shadow-btn">
-          {PERIODS.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => setPeriod(p.key)}
-              aria-pressed={period === p.key}
-              className={cn(
-                "px-3 py-1.5 text-[12.5px] font-medium rounded-md transition-colors",
-                period === p.key ? "bg-accent text-white shadow-btn" : "text-muted hover:text-ink",
-              )}
+        {/* Period toggle — rescopes the sales/cost/profit figures and sparklines below */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex items-center rounded-lg border border-line-strong bg-surface p-0.5 shadow-btn">
+            {PERIODS.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => setPeriodKey(p.key)}
+                aria-pressed={periodKey === p.key}
+                className={cn(
+                  "px-3 py-1.5 text-[12.5px] font-medium rounded-md transition-colors",
+                  periodKey === p.key ? "bg-accent text-white shadow-btn" : "text-muted hover:text-ink",
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+            {years.length > 0 && (
+              <button
+                onClick={() => setPeriodKey("year")}
+                aria-pressed={periodKey === "year"}
+                className={cn(
+                  "px-3 py-1.5 text-[12.5px] font-medium rounded-md transition-colors",
+                  periodKey === "year" ? "bg-accent text-white shadow-btn" : "text-muted hover:text-ink",
+                )}
+              >
+                This year
+              </button>
+            )}
+          </div>
+          {periodKey === "year" && years.length > 0 && (
+            <select
+              className="select !w-auto !py-1.5 !text-[12.5px]"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
             >
-              {p.label}
-            </button>
-          ))}
+              {years.map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
@@ -210,6 +273,9 @@ export default function DashboardPage() {
                 )}
                 {c.hint}
               </p>
+              <div className="mt-3">
+                <Sparkline data={sparkPoints(c.cat)} variant={isIn ? "accent" : "neutral"} />
+              </div>
             </div>
           );
         })}
