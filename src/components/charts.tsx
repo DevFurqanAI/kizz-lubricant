@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useLayoutEffect, useEffect } from "react";
+import { useRef, useState, useLayoutEffect, useEffect, useId } from "react";
 import { formatMoney } from "@/lib/utils";
 
 // ── Design tokens (graphite-ember) ──────────────────────────────────
@@ -491,6 +491,7 @@ export function Sparkline({
   const [ref, W] = useMeasure();
   const mounted = useMounted();
   const [hover, setHover] = useState<number | null>(null);
+  const clipId = useId();
   const color = variant === "accent" ? ACCENT : COST_NEUTRAL;
 
   const padX = 2, padY = 5;
@@ -528,11 +529,11 @@ export function Sparkline({
     >
       <svg width={W} height={height} role="img" aria-label="Trend">
         <defs>
-          <clipPath id="sparkReveal">
+          <clipPath id={`sparkReveal-${clipId}`}>
             <rect x="0" y="0" width={mounted ? W : 0} height={height} style={{ transition: "width 0.7s cubic-bezier(0.22,1,0.36,1)" }} />
           </clipPath>
         </defs>
-        <g clipPath="url(#sparkReveal)">
+        <g clipPath={`url(#sparkReveal-${clipId})`}>
           {allZero ? (
             <line x1={padX} y1={height / 2} x2={W - padX} y2={height / 2} stroke={color} strokeWidth={2} opacity={0.25} />
           ) : (
