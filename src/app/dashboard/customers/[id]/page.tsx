@@ -14,6 +14,8 @@ import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
 import { EmptyState, ErrorState } from "@/components/states";
 import { validateLedgerEntry, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
+import { DateRangeFilter } from "@/components/date-range-filter";
+import { resolveDateRange, type DateRangeSelection } from "@/lib/date-range";
 
 const VISIBLE_LIMIT = 100; // progressively reveal older rows beyond this
 
@@ -50,6 +52,7 @@ export default function CustomerLedgerPage() {
   const [sharing, setSharing] = useState(false);
   const [error, setError] = useState(false);
   const [showAll, setShowAll] = useState(false); // progressive render for long ledgers
+  const [dateRange, setDateRange] = useState<DateRangeSelection>({ preset: "all" });
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -284,13 +287,26 @@ export default function CustomerLedgerPage() {
   );
 
   const entries = customer.entries ?? [];
+  // Current Balance is the true running balance from the FULL history — it
+  // must not be affected by the date filter below, or it would look scoped
+  // to the visible range when it isn't.
   const lastEntry = entries[entries.length - 1];
   const currentBalance = lastEntry ? toNum(lastEntry.balance) : 0;
-  const totalDebit = entries.reduce((a, e) => a + toNum(e.debit), 0);
-  const totalCredit = entries.reduce((a, e) => a + toNum(e.credit), 0);
+
+  const { from, to } = resolveDateRange(dateRange);
+  const isFiltered = dateRange.preset !== "all";
+  const filteredEntries = isFiltered
+    ? entries.filter((e) => {
+        const d = e.date.slice(0, 10);
+        return (!from || d >= from) && (!to || d <= to);
+      })
+    : entries;
+
+  const totalDebit = filteredEntries.reduce((a, e) => a + toNum(e.debit), 0);
+  const totalCredit = filteredEntries.reduce((a, e) => a + toNum(e.credit), 0);
   // Keep the DOM light on long statements — show the most recent rows, reveal older on demand.
-  const hidden = !showAll && entries.length > VISIBLE_LIMIT ? entries.length - VISIBLE_LIMIT : 0;
-  const visibleEntries = hidden ? entries.slice(-VISIBLE_LIMIT) : entries;
+  const hidden = !showAll && filteredEntries.length > VISIBLE_LIMIT ? filteredEntries.length - VISIBLE_LIMIT : 0;
+  const visibleEntries = hidden ? filteredEntries.slice(-VISIBLE_LIMIT) : filteredEntries;
 
   return (
     <div className="space-y-6">
@@ -337,8 +353,8 @@ export default function CustomerLedgerPage() {
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-wider text-muted font-semibold">Transactions</p>
-              <p className="font-mono font-semibold text-ink mt-1 tabular-nums">{entries.length}</p>
-              <p className="text-[11px] text-muted mt-0.5">Rows in the ledger</p>
+              <p className="font-mono font-semibold text-ink mt-1 tabular-nums">{filteredEntries.length}</p>
+              <p className="text-[11px] text-muted mt-0.5">{isFiltered ? "Rows in the selected range" : "Rows in the ledger"}</p>
             </div>
           </div>
         </div>
@@ -377,6 +393,8 @@ export default function CustomerLedgerPage() {
           </button>
         </div>
       </div>
+
+      <DateRangeFilter value={dateRange} onChange={setDateRange} />
 
       {showPayForm && (
         <div className="card p-6">
@@ -482,10 +500,15 @@ export default function CustomerLedgerPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {entries.length === 0 && (
+              {filteredEntries.length === 0 && (
                 <tr>
                   <td colSpan={11}>
-                    <EmptyState icon={ReceiptText} compact title="No entries yet" description="Use “+ Add Entry” to record this customer's first transaction." />
+                    <EmptyState
+                      icon={ReceiptText}
+                      compact
+                      title={isFiltered ? "No entries in this range" : "No entries yet"}
+                      description={isFiltered ? "Try a wider date range." : "Use “+ Add Entry” to record this customer's first transaction."}
+                    />
                   </td>
                 </tr>
               )}

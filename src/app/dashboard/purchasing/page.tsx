@@ -12,6 +12,8 @@ import { Pagination } from "@/components/pagination";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
 import { SortHeader, type Sort, nextSort } from "@/components/sort-header";
 import { SearchInput } from "@/components/search-input";
+import { DateRangeFilter } from "@/components/date-range-filter";
+import { resolveDateRange, type DateRangeSelection } from "@/lib/date-range";
 import { TrendingDown, FileSpreadsheet } from "lucide-react";
 import { validateAmountEntry, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
@@ -20,11 +22,12 @@ type PurchasingData = { rows: Row[]; total: number; count: number };
 
 const PAGE_SIZE = 50;
 const purchasingCache = createLocalCache<PurchasingData>("purchasing", { ttlMs: 5 * 60_000 });
-const keyFor = (q: string, s: Sort, p: number) => `${q}|${s.col}|${s.dir}|p${p}`;
+const keyFor = (q: string, s: Sort, p: number, from: string | null, to: string | null) =>
+  `${q}|${s.col}|${s.dir}|p${p}|${from ?? ""}|${to ?? ""}`;
 
 export default function PurchasingPage() {
   const initSort: Sort = { col: "date", dir: "desc" };
-  const cached0 = purchasingCache.get(keyFor("", initSort, 1));
+  const cached0 = purchasingCache.get(keyFor("", initSort, 1, null, null));
   const [rows, setRows] = useState<Row[]>(cached0?.rows ?? []);
   const [total, setTotal] = useState(cached0?.total ?? 0);
   const [count, setCount] = useState(cached0?.count ?? 0);
@@ -33,6 +36,7 @@ export default function PurchasingPage() {
   const [loading, setLoading] = useState(!cached0);
   const [error, setError] = useState(false);
   const [search, setSearch] = useState("");
+  const [dateRange, setDateRange] = useState<DateRangeSelection>({ preset: "all" });
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0,10), detail: "", amount: "" });
@@ -45,11 +49,14 @@ export default function PurchasingPage() {
   const toast = useToast();
   const confirm = useConfirm();
 
-  const load = useCallback(async (q: string, p: number, s: Sort, opts?: { silent?: boolean }) => {
+  const load = useCallback(async (q: string, p: number, s: Sort, from: string | null, to: string | null, opts?: { silent?: boolean }) => {
     if (!opts?.silent) { setLoading(true); setError(false); }
     try {
-      const data = await api.get<PurchasingData>(`/purchasing?search=${encodeURIComponent(q)}&page=${p}&limit=${PAGE_SIZE}&sort=${s.col}&dir=${s.dir}`);
-      purchasingCache.set(keyFor(q, s, p), data);
+      const qs = new URLSearchParams({ search: q, page: String(p), limit: String(PAGE_SIZE), sort: s.col, dir: s.dir });
+      if (from) qs.set("from", from);
+      if (to) qs.set("to", to);
+      const data = await api.get<PurchasingData>(`/purchasing?${qs}`);
+      purchasingCache.set(keyFor(q, s, p, from, to), data);
       setRows(data.rows); setTotal(data.total); setCount(data.count);
     } catch {
       if (!opts?.silent) setError(true);
@@ -60,31 +67,43 @@ export default function PurchasingPage() {
 
   useEffect(() => {
     const initial = new URLSearchParams(window.location.search).get("search")?.trim() ?? "";
-    if (initial) { setSearch(initial); setPage(1); load(initial, 1, initSort); return; }
-    const cached = purchasingCache.get(keyFor("", initSort, 1));
+    const { from, to } = resolveDateRange(dateRange);
+    if (initial) { setSearch(initial); setPage(1); load(initial, 1, initSort, from, to); return; }
+    const cached = purchasingCache.get(keyFor("", initSort, 1, from, to));
     if (cached) {
       setRows(cached.rows); setTotal(cached.total); setCount(cached.count);
       setLoading(false);
-      load("", 1, initSort, { silent: true });
+      load("", 1, initSort, from, to, { silent: true });
     } else {
-      load("", 1, initSort);
+      load("", 1, initSort, from, to);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const applyView = (q: string, p: number, s: Sort) => {
-    const cached = purchasingCache.get(keyFor(q, s, p));
+  const applyView = (q: string, p: number, s: Sort, from: string | null, to: string | null) => {
+    const cached = purchasingCache.get(keyFor(q, s, p, from, to));
     if (cached) { setRows(cached.rows); setTotal(cached.total); setCount(cached.count); }
-    load(q, p, s);
+    load(q, p, s, from, to);
   };
 
   const handleSearch = (v: string) => {
     setSearch(v); setPage(1);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => applyView(v, 1, sort), 300);
+    debounceRef.current = setTimeout(() => {
+      const { from, to } = resolveDateRange(dateRange);
+      applyView(v, 1, sort, from, to);
+    }, 300);
   };
-  const onSort = (col: string) => { const s = nextSort(sort, col); setSort(s); setPage(1); applyView(search, 1, s); };
-  const goPage = (p: number) => { setPage(p); applyView(search, p, sort); };
+  const onSort = (col: string) => {
+    const s = nextSort(sort, col); setSort(s); setPage(1);
+    const { from, to } = resolveDateRange(dateRange);
+    applyView(search, 1, s, from, to);
+  };
+  const goPage = (p: number) => {
+    setPage(p);
+    const { from, to } = resolveDateRange(dateRange);
+    applyView(search, p, sort, from, to);
+  };
 
   const handleSave = async () => {
     const errs = validateAmountEntry(form);
@@ -97,7 +116,8 @@ export default function PurchasingPage() {
       setShowForm(false);
       purchasingCache.clear();
       setPage(1);
-      load(search, 1, sort);
+      const { from, to } = resolveDateRange(dateRange);
+      load(search, 1, sort, from, to);
       toast.success("Purchase added");
     } catch { toast.error("Couldn't add purchase"); }
     finally { setSaving(false); }
@@ -110,8 +130,13 @@ export default function PurchasingPage() {
     setRows(r => r.filter(row => row.id !== id));
     if (del) setTotal(t => t - Number(del.amount));
     setCount(c => Math.max(0, c - 1));
-    try { await api.del(`/purchasing/${id}`); purchasingCache.clear(); load(search, page, sort, { silent: true }); toast.success("Purchase deleted"); }
-    catch { setRows(prevRows); setTotal(prevTotal); setCount(prevCount); toast.error("Couldn't delete purchase"); }
+    try {
+      await api.del(`/purchasing/${id}`);
+      purchasingCache.clear();
+      const { from, to } = resolveDateRange(dateRange);
+      load(search, page, sort, from, to, { silent: true });
+      toast.success("Purchase deleted");
+    } catch { setRows(prevRows); setTotal(prevTotal); setCount(prevCount); toast.error("Couldn't delete purchase"); }
   };
 
   const startEdit = (r: Row) => { setEditId(r.id); setEditForm({ date: r.date.slice(0,10), detail: r.detail, amount: r.amount }); };
@@ -121,14 +146,23 @@ export default function PurchasingPage() {
     const prevRows = rows;
     setRows(rs => rs.map(r => r.id === id ? { ...r, ...editForm } : r));
     setEditId(null);
-    try { await api.patch(`/purchasing/${id}`, { ...editForm, amount: Number(editForm.amount) }); purchasingCache.clear(); load(search, page, sort, { silent: true }); toast.success("Purchase updated"); }
-    catch { setRows(prevRows); toast.error("Couldn't update purchase"); }
+    try {
+      await api.patch(`/purchasing/${id}`, { ...editForm, amount: Number(editForm.amount) });
+      purchasingCache.clear();
+      const { from, to } = resolveDateRange(dateRange);
+      load(search, page, sort, from, to, { silent: true });
+      toast.success("Purchase updated");
+    } catch { setRows(prevRows); toast.error("Couldn't update purchase"); }
   };
 
   const exportXlsx = async () => {
     setExporting(true);
     try {
-      const all = await fetchAllRows<Row>("/purchasing", { search, sort: sort.col, dir: sort.dir });
+      const { from, to } = resolveDateRange(dateRange);
+      const params: Record<string, string> = { search, sort: sort.col, dir: sort.dir };
+      if (from) params.from = from;
+      if (to) params.to = to;
+      const all = await fetchAllRows<Row>("/purchasing", params);
       const { buildPurchasingXlsx } = await import("@/lib/reports-xlsx");
       const blob = await buildPurchasingXlsx(all, search ? `Filtered: "${search}"` : undefined);
       await saveOrShareBlob(blob, `purchasing_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -137,6 +171,14 @@ export default function PurchasingPage() {
     } finally {
       setExporting(false);
     }
+  };
+
+  const handleDateRangeChange = (v: DateRangeSelection) => {
+    setDateRange(v); setPage(1);
+    const { from, to } = resolveDateRange(v);
+    const cached = purchasingCache.get(keyFor(search, sort, 1, from, to));
+    if (cached) { setRows(cached.rows); setTotal(cached.total); setCount(cached.count); }
+    load(search, 1, sort, from, to);
   };
 
   return (
@@ -177,8 +219,11 @@ export default function PurchasingPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-4">
-        <SearchInput value={search} onChange={handleSearch} placeholder="Search purchases…" className="w-full max-w-sm" />
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
+          <SearchInput value={search} onChange={handleSearch} placeholder="Search purchases…" className="w-full max-w-sm" />
+          <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
+        </div>
         <div className="text-right flex-shrink-0">
           <p className="text-[11px] text-muted uppercase tracking-wider">Total</p>
           <p className="font-mono font-semibold text-ink tabular-nums">{formatMoney(total)}</p>
@@ -198,7 +243,7 @@ export default function PurchasingPage() {
             </thead>
             <tbody className="divide-y divide-line">
               {loading ? <TableSkeleton rows={6} cols={4} /> :
-               error ? <tr><td colSpan={4}><ErrorState onRetry={() => load(search, page, sort)} compact /></td></tr> :
+               error ? <tr><td colSpan={4}><ErrorState onRetry={() => { const { from, to } = resolveDateRange(dateRange); load(search, page, sort, from, to); }} compact /></td></tr> :
                rows.length === 0 ? <tr><td colSpan={4}><EmptyState icon={TrendingDown} compact title={search ? "No matches" : "No entries yet"} description={search ? `Nothing matches “${search}”.` : "Record your first purchase with the “Add Purchasing” button."} /></td></tr> :
                rows.map(r => editId === r.id ? (
                 <tr key={r.id} className="bg-accent-tint/40">

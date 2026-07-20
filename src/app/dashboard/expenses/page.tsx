@@ -13,12 +13,15 @@ import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
 import { SortHeader, type Sort, nextSort } from "@/components/sort-header";
 import { SearchInput } from "@/components/search-input";
 import { validateAmountEntry, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
+import { DateRangeFilter } from "@/components/date-range-filter";
+import { resolveDateRange, type DateRangeSelection } from "@/lib/date-range";
 
 type Row = { id: number; date: string; detail: string; amount: string };
 type ListResponse = { rows: Row[]; total: number; months: number; count: number };
 
 const PAGE_SIZE = 50;
-const keyFor = (q: string, s: Sort, p: number) => `${q || "__all__"}|${s.col}|${s.dir}|p${p}`;
+const keyFor = (q: string, s: Sort, p: number, from: string | null, to: string | null) =>
+  `${q || "__all__"}|${s.col}|${s.dir}|p${p}|${from ?? ""}|${to ?? ""}`;
 
 export default function ExpensesPage() {
   const initSort: Sort = { col: "date", dir: "desc" };
@@ -31,6 +34,7 @@ export default function ExpensesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [search, setSearch] = useState("");
+  const [dateRange, setDateRange] = useState<DateRangeSelection>({ preset: "all" });
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), detail: "", amount: "" });
@@ -47,8 +51,8 @@ export default function ExpensesPage() {
   const confirm = useConfirm();
 
   // ── Load with 5-min stale-while-revalidate cache ───────
-  const load = useCallback(async (q: string, p: number, s: Sort, opts?: { silent?: boolean }) => {
-    const cached = getCache<ListResponse>(keyFor(q, s, p));
+  const load = useCallback(async (q: string, p: number, s: Sort, from: string | null, to: string | null, opts?: { silent?: boolean }) => {
+    const cached = getCache<ListResponse>(keyFor(q, s, p, from, to));
     if (cached) {
       setRows(cached.rows); setTotal(cached.total); setMonths(cached.months ?? 0); setCount(cached.count);
       setLoading(false);
@@ -57,9 +61,12 @@ export default function ExpensesPage() {
     }
     if (!opts?.silent) setError(false);
     try {
-      const data = await api.get<ListResponse>(`/expenses?search=${encodeURIComponent(q)}&page=${p}&limit=${PAGE_SIZE}&sort=${s.col}&dir=${s.dir}`);
+      const qs = new URLSearchParams({ search: q, page: String(p), limit: String(PAGE_SIZE), sort: s.col, dir: s.dir });
+      if (from) qs.set("from", from);
+      if (to) qs.set("to", to);
+      const data = await api.get<ListResponse>(`/expenses?${qs}`);
       setRows(data.rows); setTotal(data.total); setMonths(data.months ?? 0); setCount(data.count);
-      setCache(keyFor(q, s, p), data);
+      setCache(keyFor(q, s, p, from, to), data);
     } catch {
       if (!cached && !opts?.silent) setError(true);
     } finally {
@@ -70,16 +77,31 @@ export default function ExpensesPage() {
   useEffect(() => {
     const initial = new URLSearchParams(window.location.search).get("search")?.trim() ?? "";
     if (initial) setSearch(initial);
-    load(initial, 1, initSort);
+    const { from, to } = resolveDateRange(dateRange);
+    load(initial, 1, initSort, from, to);
   }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onSearchChange = (value: string) => {
     setSearch(value); setPage(1);
     if (searchDebounce.current) clearTimeout(searchDebounce.current);
-    searchDebounce.current = setTimeout(() => load(value, 1, sort), 250);
+    const { from, to } = resolveDateRange(dateRange);
+    searchDebounce.current = setTimeout(() => load(value, 1, sort, from, to), 250);
   };
-  const onSort = (col: string) => { const s = nextSort(sort, col); setSort(s); setPage(1); load(search, 1, s); };
-  const goPage = (p: number) => { setPage(p); load(search, p, sort); };
+  const onSort = (col: string) => {
+    const s = nextSort(sort, col); setSort(s); setPage(1);
+    const { from, to } = resolveDateRange(dateRange);
+    load(search, 1, s, from, to);
+  };
+  const goPage = (p: number) => {
+    setPage(p);
+    const { from, to } = resolveDateRange(dateRange);
+    load(search, p, sort, from, to);
+  };
+  const handleDateRangeChange = (v: DateRangeSelection) => {
+    setDateRange(v); setPage(1);
+    const { from, to } = resolveDateRange(v);
+    load(search, 1, sort, from, to);
+  };
 
   const handleSave = async () => {
     const errs = validateAmountEntry(form);
@@ -92,7 +114,8 @@ export default function ExpensesPage() {
       setShowForm(false);
       clearCache();
       setPage(1);
-      load(search, 1, sort);
+      const { from, to } = resolveDateRange(dateRange);
+      load(search, 1, sort, from, to);
       toast.success("Expense added");
     } catch {
       toast.error("Couldn't add expense");
@@ -114,7 +137,8 @@ export default function ExpensesPage() {
     try {
       await api.del(`/expenses/${id}`);
       clearCache();
-      load(search, page, sort, { silent: true });
+      const { from, to } = resolveDateRange(dateRange);
+      load(search, page, sort, from, to, { silent: true });
       toast.success("Expense deleted");
     } catch {
       setRows(prevRows);
@@ -148,7 +172,8 @@ export default function ExpensesPage() {
       await api.patch(`/expenses/${id}`, { ...editForm, amount: Number(editForm.amount) });
       clearCache();
       cancelEdit();
-      load(search, page, sort, { silent: true }); // reconcile total + ordering from server
+      const { from, to } = resolveDateRange(dateRange);
+      load(search, page, sort, from, to, { silent: true }); // reconcile total + ordering from server
       toast.success("Expense updated");
     } catch {
       setRows(prevRows); // rollback on failure
@@ -164,7 +189,11 @@ export default function ExpensesPage() {
   const exportXlsx = async () => {
     setExporting(true);
     try {
-      const all = await fetchAllRows<Row>("/expenses", { search, sort: sort.col, dir: sort.dir });
+      const { from, to } = resolveDateRange(dateRange);
+      const params: Record<string, string> = { search, sort: sort.col, dir: sort.dir };
+      if (from) params.from = from;
+      if (to) params.to = to;
+      const all = await fetchAllRows<Row>("/expenses", params);
       const { buildExpensesXlsx } = await import("@/lib/reports-xlsx");
       const blob = await buildExpensesXlsx(all, search ? `Filtered: "${search}"` : undefined);
       await saveOrShareBlob(blob, `expenses_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -266,8 +295,11 @@ export default function ExpensesPage() {
         </div>
       </div>
 
-      {/* ── Search ─────────────────────────────────────────── */}
-      <SearchInput value={search} onChange={onSearchChange} placeholder="Search expenses…" className="max-w-sm" />
+      {/* ── Search + date range ──────────────────────────────── */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <SearchInput value={search} onChange={onSearchChange} placeholder="Search expenses…" className="max-w-sm" />
+        <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
+      </div>
 
       {/* ── Desktop / tablet table ─────────────────────────── */}
       <div className="hidden sm:block card overflow-hidden">
@@ -285,7 +317,7 @@ export default function ExpensesPage() {
               {loading
                 ? <TableSkeleton rows={6} cols={4} />
                 : error
-                ? <tr><td colSpan={4}><ErrorState onRetry={() => load(search, page, sort)} compact /></td></tr>
+                ? <tr><td colSpan={4}><ErrorState onRetry={() => { const { from, to } = resolveDateRange(dateRange); load(search, page, sort, from, to); }} compact /></td></tr>
                 : rows.length === 0
                 ? (
                   <tr>
@@ -400,7 +432,7 @@ export default function ExpensesPage() {
               <div key={i} className="h-16 card animate-pulse" />
             ))
           : error
-          ? <div className="card"><ErrorState onRetry={() => load(search, page, sort)} compact /></div>
+          ? <div className="card"><ErrorState onRetry={() => { const { from, to } = resolveDateRange(dateRange); load(search, page, sort, from, to); }} compact /></div>
           : rows.length === 0
           ? (
             <div className="card">
