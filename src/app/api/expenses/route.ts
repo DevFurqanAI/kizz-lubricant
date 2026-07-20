@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const { search, page, limit, offset, sort, dir, from, to } = parseListParams(req, {
+    const { search, page, limit, offset, sort, dir, from, to, amountMin, amountMax } = parseListParams(req, {
       sortable: Object.keys(SORT),
       defaultSort: "date",
     });
@@ -24,6 +24,8 @@ export async function GET(req: NextRequest) {
       search ? ilike(expenses.detail, `%${search}%`) : undefined,
       from ? gte(expenses.date, from) : undefined,
       to ? lte(expenses.date, to) : undefined,
+      amountMin != null ? gte(expenses.amount, String(amountMin)) : undefined,
+      amountMax != null ? lte(expenses.amount, String(amountMax)) : undefined,
     ].filter((c) => c !== undefined);
     const where = conditions.length ? and(...conditions) : undefined;
     const col = SORT[sort as keyof typeof SORT];

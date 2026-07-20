@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { api, fetchAllRows } from "@/lib/api";
 import { formatMoney, toNum, fmtDate } from "@/lib/utils";
 import { createLocalCache } from "@/lib/localCache";
@@ -13,7 +14,10 @@ import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
 import { SortHeader, type Sort, nextSort } from "@/components/sort-header";
 import { SearchInput } from "@/components/search-input";
 import { DateRangeFilter } from "@/components/date-range-filter";
-import { resolveDateRange, type DateRangeSelection } from "@/lib/date-range";
+import { AmountRangeFilter } from "@/components/amount-range-filter";
+import { FilterBar } from "@/components/filter-bar";
+import { resolveDateRange, encodeDateRange, decodeDateRange, type DateRangeSelection } from "@/lib/date-range";
+import { buildQueryString } from "@/lib/url-filter-sync";
 import { TrendingUp, FileSpreadsheet } from "lucide-react";
 import { validateSale, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
@@ -37,12 +41,15 @@ type CustomerOption = { id: number; name: string };
 
 const PAGE_SIZE = 50;
 const salesCache = createLocalCache<SalesData>("sales", { ttlMs: 5 * 60_000 });
-const keyFor = (q: string, s: Sort, p: number, from: string | null, to: string | null) =>
-  `${q}|${s.col}|${s.dir}|p${p}|${from ?? ""}|${to ?? ""}`;
+const keyFor = (q: string, s: Sort, p: number, from: string | null, to: string | null, amountMin: string, amountMax: string, customerId: string) =>
+  `${q}|${s.col}|${s.dir}|p${p}|${from ?? ""}|${to ?? ""}|${amountMin}|${amountMax}|${customerId}`;
 
 export default function SalesPage() {
   const initSort: Sort = { col: "date", dir: "desc" };
-  const cached0 = salesCache.get(keyFor("", initSort, 1, null, null));
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const cached0 = salesCache.get(keyFor("", initSort, 1, null, null, "", "", ""));
   const [rows, setRows] = useState<SaleRow[]>(cached0?.rows ?? []);
   const [total, setTotal] = useState(cached0?.total ?? 0);
   const [totalKg, setTotalKg] = useState(cached0?.totalKg ?? 0);
@@ -54,6 +61,9 @@ export default function SalesPage() {
   const [error, setError] = useState(false);
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState<DateRangeSelection>({ preset: "all" });
+  const [amountMin, setAmountMin] = useState("");
+  const [amountMax, setAmountMax] = useState("");
+  const [customerId, setCustomerId] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), detail: "", packing: "", unit: "", qty: "", rate: "", amount: "", saleKg: "", saleKgUnit: "Kg", customerId: "", paidNow: "", paidMethod: "", paidNote: "" });
@@ -74,14 +84,17 @@ export default function SalesPage() {
   const toast = useToast();
   const confirm = useConfirm();
 
-  const load = useCallback(async (q: string, p: number, s: Sort, from: string | null, to: string | null, opts?: { silent?: boolean }) => {
+  const load = useCallback(async (q: string, p: number, s: Sort, from: string | null, to: string | null, amountMin: string, amountMax: string, customerId: string, opts?: { silent?: boolean }) => {
     if (!opts?.silent) { setLoading(true); setError(false); }
     try {
       const qs = new URLSearchParams({ search: q, page: String(p), limit: String(PAGE_SIZE), sort: s.col, dir: s.dir });
       if (from) qs.set("from", from);
       if (to) qs.set("to", to);
+      if (amountMin) qs.set("amountMin", amountMin);
+      if (amountMax) qs.set("amountMax", amountMax);
+      if (customerId) qs.set("customerId", customerId);
       const data = await api.get<SalesData>(`/sales?${qs}`);
-      salesCache.set(keyFor(q, s, p, from, to), data);
+      salesCache.set(keyFor(q, s, p, from, to, amountMin, amountMax, customerId), data);
       setRows(data.rows); setTotal(data.total); setTotalKg(data.totalKg ?? 0); setTotalL(data.totalL ?? 0); setCount(data.count);
     } catch {
       if (!opts?.silent) setError(true);
@@ -103,16 +116,29 @@ export default function SalesPage() {
   }, []);
 
   useEffect(() => {
-    const { from, to } = resolveDateRange(dateRange);
-    const initial = new URLSearchParams(window.location.search).get("search")?.trim() ?? "";
-    if (initial) { setSearch(initial); setPage(1); load(initial, 1, initSort, from, to); return; }
-    const cached = salesCache.get(keyFor("", initSort, 1, from, to));
+    const initialSearch = searchParams.get("search")?.trim() ?? "";
+    const initialRange = decodeDateRange(searchParams);
+    const initialAmountMin = searchParams.get("amountMin") ?? "";
+    const initialAmountMax = searchParams.get("amountMax") ?? "";
+    const initialCustomerId = searchParams.get("customerId") ?? "";
+    setSearch(initialSearch);
+    setDateRange(initialRange);
+    setAmountMin(initialAmountMin);
+    setAmountMax(initialAmountMax);
+    setCustomerId(initialCustomerId);
+    const { from, to } = resolveDateRange(initialRange);
+    if (initialSearch || initialRange.preset !== "all" || initialAmountMin || initialAmountMax || initialCustomerId) {
+      setPage(1);
+      load(initialSearch, 1, initSort, from, to, initialAmountMin, initialAmountMax, initialCustomerId);
+      return;
+    }
+    const cached = salesCache.get(keyFor("", initSort, 1, from, to, "", "", ""));
     if (cached) {
       setRows(cached.rows); setTotal(cached.total); setCount(cached.count);
       setLoading(false);
-      load("", 1, initSort, from, to, { silent: true });
+      load("", 1, initSort, from, to, "", "", "", { silent: true });
     } else {
-      load("", 1, initSort, from, to);
+      load("", 1, initSort, from, to, "", "", "");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -122,11 +148,22 @@ export default function SalesPage() {
     api.get<CustomerOption[]>("/customers/options").then(setCustomers).catch(() => {});
   }, []);
 
+  const syncUrl = (overrides: Partial<{ search: string; dateRange: DateRangeSelection; amountMin: string; amountMax: string; customerId: string; sort: Sort; page: number }> = {}) => {
+    const s = overrides.search ?? search;
+    const dr = overrides.dateRange ?? dateRange;
+    const aMin = overrides.amountMin ?? amountMin;
+    const aMax = overrides.amountMax ?? amountMax;
+    const cust = overrides.customerId ?? customerId;
+    const srt = overrides.sort ?? sort;
+    const p = overrides.page ?? page;
+    router.replace(`${pathname}?${buildQueryString({ search: s, ...encodeDateRange(dr), amountMin: aMin, amountMax: aMax, customerId: cust, sort: srt.col, dir: srt.dir, page: p })}`, { scroll: false });
+  };
+
   const applyView = (q: string, p: number, s: Sort) => {
     const { from, to } = resolveDateRange(dateRange);
-    const cached = salesCache.get(keyFor(q, s, p, from, to));
+    const cached = salesCache.get(keyFor(q, s, p, from, to, amountMin, amountMax, customerId));
     if (cached) { setRows(cached.rows); setTotal(cached.total); setTotalKg(cached.totalKg ?? 0); setTotalL(cached.totalL ?? 0); setCount(cached.count); }
-    load(q, p, s, from, to);
+    load(q, p, s, from, to, amountMin, amountMax, customerId);
   };
 
   // Fetch the monthly roll-up the first time the user switches to that view.
@@ -138,17 +175,35 @@ export default function SalesPage() {
   const handleSearch = (v: string) => {
     setSearch(v); setPage(1);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => applyView(v, 1, sort), 300);
+    debounceRef.current = setTimeout(() => { applyView(v, 1, sort); syncUrl({ search: v, page: 1 }); }, 300);
   };
-  const onSort = (col: string) => { const s = nextSort(sort, col); setSort(s); setPage(1); applyView(search, 1, s); };
-  const goPage = (p: number) => { setPage(p); applyView(search, p, sort); };
+  const onSort = (col: string) => { const s = nextSort(sort, col); setSort(s); setPage(1); applyView(search, 1, s); syncUrl({ sort: s, page: 1 }); };
+  const goPage = (p: number) => { setPage(p); applyView(search, p, sort); syncUrl({ page: p }); };
 
   const handleDateRangeChange = (v: DateRangeSelection) => {
     setDateRange(v); setPage(1);
     const { from, to } = resolveDateRange(v);
-    const cached = salesCache.get(keyFor(search, sort, 1, from, to));
+    const cached = salesCache.get(keyFor(search, sort, 1, from, to, amountMin, amountMax, customerId));
     if (cached) { setRows(cached.rows); setTotal(cached.total); setTotalKg(cached.totalKg ?? 0); setTotalL(cached.totalL ?? 0); setCount(cached.count); }
-    load(search, 1, sort, from, to);
+    load(search, 1, sort, from, to, amountMin, amountMax, customerId);
+    syncUrl({ dateRange: v, page: 1 });
+  };
+
+  const handleFilterChange = (next: Partial<{ amountMin: string; amountMax: string; customerId: string }>) => {
+    const nextMin = next.amountMin ?? amountMin;
+    const nextMax = next.amountMax ?? amountMax;
+    const nextCust = next.customerId ?? customerId;
+    setAmountMin(nextMin); setAmountMax(nextMax); setCustomerId(nextCust);
+    setPage(1);
+    const { from, to } = resolveDateRange(dateRange);
+    load(search, 1, sort, from, to, nextMin, nextMax, nextCust);
+    syncUrl({ amountMin: nextMin, amountMax: nextMax, customerId: nextCust, page: 1 });
+  };
+
+  const clearFilters = () => {
+    setDateRange({ preset: "all" }); setAmountMin(""); setAmountMax(""); setCustomerId(""); setPage(1);
+    load(search, 1, sort, null, null, "", "", "");
+    syncUrl({ dateRange: { preset: "all" }, amountMin: "", amountMax: "", customerId: "", page: 1 });
   };
 
   const handleAutoAmount = () => {
@@ -195,7 +250,7 @@ export default function SalesPage() {
       if (months.length) loadMonths();
       setPage(1);
       const { from, to } = resolveDateRange(dateRange);
-      load(search, 1, sort, from, to);
+      load(search, 1, sort, from, to, amountMin, amountMax, customerId);
       toast.success(
         !form.customerId ? "Sale added"
           : paidNow > 0 ? "Sale added & payment posted to ledger"
@@ -218,7 +273,7 @@ export default function SalesPage() {
       if (del?.customerId) customerDetailCache.delete(String(del.customerId));
       salesCache.clear();
       const { from, to } = resolveDateRange(dateRange);
-      load(search, page, sort, from, to, { silent: true });
+      load(search, page, sort, from, to, amountMin, amountMax, customerId, { silent: true });
       toast.success("Sale deleted");
     } catch { setRows(prevRows); setTotal(prevTotal); setCount(prevCount); toast.error("Couldn't delete sale"); }
   };
@@ -256,7 +311,7 @@ export default function SalesPage() {
       salesCache.clear();
       if (months.length) loadMonths();
       const { from, to } = resolveDateRange(dateRange);
-      load(search, page, sort, from, to, { silent: true });
+      load(search, page, sort, from, to, amountMin, amountMax, customerId, { silent: true });
       toast.success("Sale updated");
     } catch { setRows(prevRows); toast.error("Couldn't update sale"); }
   };
@@ -268,6 +323,9 @@ export default function SalesPage() {
       const params: Record<string, string> = { search, sort: sort.col, dir: sort.dir };
       if (from) params.from = from;
       if (to) params.to = to;
+      if (amountMin) params.amountMin = amountMin;
+      if (amountMax) params.amountMax = amountMax;
+      if (customerId) params.customerId = customerId;
       const all = await fetchAllRows<SaleRow>("/sales", params);
       const { buildSalesXlsx } = await import("@/lib/reports-xlsx");
       const blob = await buildSalesXlsx(all, search ? `Filtered: "${search}"` : undefined);
@@ -407,10 +465,21 @@ export default function SalesPage() {
             <button onClick={() => switchView("month")} className={`px-3 py-1.5 font-medium transition-colors border-l border-line-strong ${view === "month" ? "bg-surface text-ink" : "text-muted hover:text-ink"}`}>By month</button>
           </div>
           {view === "list" && (
-            <>
+            <FilterBar active={!!(search || dateRange.preset !== "all" || amountMin || amountMax || customerId)} onClear={clearFilters}>
               <SearchInput value={search} onChange={handleSearch} placeholder="Search sales…" className="w-full max-w-xs" />
               <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
-            </>
+              <AmountRangeFilter min={amountMin} max={amountMax} onChange={(min, max) => handleFilterChange({ amountMin: min, amountMax: max })} />
+              <select
+                value={customerId}
+                onChange={(e) => handleFilterChange({ customerId: e.target.value })}
+                className="select py-1.5 text-[12.5px] max-w-[160px]"
+              >
+                <option value="">All customers</option>
+                {customers.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </FilterBar>
           )}
         </div>
         <div className="text-right flex-shrink-0">
@@ -446,7 +515,7 @@ export default function SalesPage() {
               {loading ? (
                 <TableSkeleton rows={6} cols={10} />
               ) : error ? (
-                <tr><td colSpan={10}><ErrorState onRetry={() => { const { from, to } = resolveDateRange(dateRange); load(search, page, sort, from, to); }} compact /></td></tr>
+                <tr><td colSpan={10}><ErrorState onRetry={() => { const { from, to } = resolveDateRange(dateRange); load(search, page, sort, from, to, amountMin, amountMax, customerId); }} compact /></td></tr>
               ) : rows.length === 0 ? (
                 <tr><td colSpan={10}><EmptyState icon={TrendingUp} compact title={search ? "No matches" : "No sales yet"} description={search ? `Nothing matches “${search}”.` : "Record your first sale with the “Add Sale” button."} /></td></tr>
               ) : rows.map(r => editId === r.id ? (

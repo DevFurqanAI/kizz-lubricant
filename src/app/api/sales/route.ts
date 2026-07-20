@@ -18,14 +18,19 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const { search, page, limit, offset, sort, dir, from, to } = parseListParams(req, {
+    const { search, page, limit, offset, sort, dir, from, to, amountMin, amountMax } = parseListParams(req, {
       sortable: Object.keys(SORT),
       defaultSort: "date",
     });
+    const customerIdParam = req.nextUrl.searchParams.get("customerId");
+    const customerId = customerIdParam ? Number(customerIdParam) : null;
     const conditions = [
       search ? ilike(sales.detail, `%${search}%`) : undefined,
       from ? gte(sales.date, from) : undefined,
       to ? lte(sales.date, to) : undefined,
+      amountMin != null ? gte(sales.amount, String(amountMin)) : undefined,
+      amountMax != null ? lte(sales.amount, String(amountMax)) : undefined,
+      customerId != null && Number.isFinite(customerId) ? eq(sales.customerId, customerId) : undefined,
     ].filter((c) => c !== undefined);
     const where = conditions.length ? and(...conditions) : undefined;
     const col = SORT[sort as keyof typeof SORT];
