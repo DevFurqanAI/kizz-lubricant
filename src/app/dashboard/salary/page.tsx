@@ -175,15 +175,16 @@ export default function SalaryPage() {
     api.get<Options>("/salary/employees").then(setOptions).catch(() => {});
   }, []);
 
-  const syncUrl = (overrides: Partial<{ search: string; dateRange: DateRangeSelection; amountMin: string; amountMax: string; employee: string; account: string; page: number }> = {}) => {
+  const syncUrl = (overrides: Partial<{ search: string; dateRange: DateRangeSelection; amountMin: string; amountMax: string; employee: string; account: string; dir: "asc" | "desc"; page: number }> = {}) => {
     const s = overrides.search ?? search;
     const dr = overrides.dateRange ?? dateRange;
     const aMin = overrides.amountMin ?? amountMin;
     const aMax = overrides.amountMax ?? amountMax;
     const emp = overrides.employee ?? employee;
     const acc = overrides.account ?? account;
+    const d = overrides.dir ?? dir;
     const p = overrides.page ?? page;
-    router.replace(`${pathname}?${buildQueryString({ search: s, ...encodeDateRange(dr), amountMin: aMin, amountMax: aMax, employee: emp, account: acc, page: p })}`, { scroll: false });
+    router.replace(`${pathname}?${buildQueryString({ search: s, ...encodeDateRange(dr), amountMin: aMin, amountMax: aMax, employee: emp, account: acc, dir: d, page: p })}`, { scroll: false });
   };
 
   const applyView = (q: string, p: number, d: "asc" | "desc") => {
@@ -198,7 +199,7 @@ export default function SalaryPage() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => { applyView(v, 1, dir); syncUrl({ search: v, page: 1 }); }, 300);
   };
-  const toggleSort = () => { const d = dir === "desc" ? "asc" : "desc"; setDir(d); setPage(1); applyView(search, 1, d); };
+  const toggleSort = () => { const d = dir === "desc" ? "asc" : "desc"; setDir(d); setPage(1); applyView(search, 1, d); syncUrl({ dir: d, page: 1 }); };
   const goPage = (p: number) => { setPage(p); applyView(search, p, dir); syncUrl({ page: p }); };
 
   const handleDateRangeChange = (v: DateRangeSelection) => {
