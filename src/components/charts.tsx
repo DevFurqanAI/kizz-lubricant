@@ -383,3 +383,97 @@ export function ProfitBars({ data, height = 220 }: { data: ProfitPoint[]; height
     </div>
   );
 }
+
+// ── Cost composition — purchasing / expenses / salary as a share of total cost ──
+export type DonutSlice = { label: string; value: number; color: string };
+
+export function CostDonut({ data, height = 220 }: { data: DonutSlice[]; height?: number }) {
+  const mounted = useMounted();
+  const [hover, setHover] = useState<number | null>(null);
+  const total = data.reduce((a, d) => a + d.value, 0);
+
+  if (total <= 0) {
+    return (
+      <div className="grid place-items-center text-sm text-muted" style={{ height }}>
+        No data yet
+      </div>
+    );
+  }
+
+  const size = height;
+  const strokeW = 20;
+  const R = size / 2 - strokeW / 2 - 2;
+  const C = 2 * Math.PI * R;
+  const cx = size / 2;
+  const cy = size / 2;
+
+  let acc = 0;
+  const segments = data.map((d, i) => {
+    const frac = d.value / total;
+    const dash = mounted ? frac * C : 0;
+    const offset = -acc * C;
+    acc += frac;
+    return { ...d, dash, offset, frac, i };
+  });
+
+  const hv = hover !== null ? segments[hover] : null;
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center gap-6">
+      <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+        <svg width={size} height={size} role="img" aria-label="Cost composition">
+          <circle cx={cx} cy={cy} r={R} fill="none" stroke={GRID} strokeWidth={strokeW} />
+          {segments.map((s) => (
+            <circle
+              key={s.label}
+              cx={cx}
+              cy={cy}
+              r={R}
+              fill="none"
+              stroke={s.color}
+              strokeWidth={strokeW}
+              strokeDasharray={`${s.dash} ${Math.max(0, C - s.dash)}`}
+              strokeDashoffset={s.offset}
+              transform={`rotate(-90 ${cx} ${cy})`}
+              opacity={hover === null || hover === s.i ? 1 : 0.35}
+              style={{ transition: "stroke-dasharray 0.7s cubic-bezier(0.22,1,0.36,1), opacity 0.15s", cursor: "pointer" }}
+              onMouseEnter={() => setHover(s.i)}
+              onMouseLeave={() => setHover(null)}
+            />
+          ))}
+        </svg>
+        <div className="absolute inset-0 grid place-items-center pointer-events-none">
+          <div className="text-center px-2">
+            <p className="text-[10px] text-muted uppercase tracking-wider truncate max-w-[8rem]">
+              {hv ? hv.label : "Total cost"}
+            </p>
+            <p className="mt-0.5 font-mono text-lg font-semibold text-ink tabular-nums">
+              {formatMoney(hv ? hv.value : total)}
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 w-full space-y-2.5">
+        {data.map((d, i) => (
+          <div
+            key={d.label}
+            className="flex items-center justify-between gap-3 text-[13px] cursor-pointer"
+            onMouseEnter={() => setHover(i)}
+            onMouseLeave={() => setHover(null)}
+          >
+            <span className="flex items-center gap-2 text-muted min-w-0">
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: d.color }} />
+              <span className="truncate">{d.label}</span>
+            </span>
+            <span className="flex items-center gap-2 flex-shrink-0">
+              <span className="font-mono font-semibold text-ink tabular-nums">{formatMoney(d.value)}</span>
+              <span className="text-muted text-[11px] w-9 text-right">
+                {((d.value / total) * 100).toFixed(0)}%
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
