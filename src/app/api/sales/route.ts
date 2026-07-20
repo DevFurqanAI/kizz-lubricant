@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
 import { sales, customers, customerEntries } from "@/db/schema";
-import { asc, desc, eq, sql, ilike } from "drizzle-orm";
+import { asc, desc, eq, sql, ilike, and, gte, lte } from "drizzle-orm";
 import { parseListParams } from "@/lib/pagination";
 import { recalcBalances } from "@/lib/ledger";
 import { validateSale, hasErrors, firstError } from "@/lib/validation";
@@ -18,11 +18,16 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const { search, page, limit, offset, sort, dir } = parseListParams(req, {
+    const { search, page, limit, offset, sort, dir, from, to } = parseListParams(req, {
       sortable: Object.keys(SORT),
       defaultSort: "date",
     });
-    const where = search ? ilike(sales.detail, `%${search}%`) : undefined;
+    const conditions = [
+      search ? ilike(sales.detail, `%${search}%`) : undefined,
+      from ? gte(sales.date, from) : undefined,
+      to ? lte(sales.date, to) : undefined,
+    ].filter((c) => c !== undefined);
+    const where = conditions.length ? and(...conditions) : undefined;
     const col = SORT[sort as keyof typeof SORT];
     const order = dir === "asc" ? [asc(col), asc(sales.id)] : [desc(col), desc(sales.id)];
 

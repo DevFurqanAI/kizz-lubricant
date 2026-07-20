@@ -12,6 +12,8 @@ import { Pagination } from "@/components/pagination";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
 import { SortHeader, type Sort, nextSort } from "@/components/sort-header";
 import { SearchInput } from "@/components/search-input";
+import { DateRangeFilter } from "@/components/date-range-filter";
+import { resolveDateRange, type DateRangeSelection } from "@/lib/date-range";
 import { TrendingUp, FileSpreadsheet } from "lucide-react";
 import { validateSale, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
@@ -35,11 +37,12 @@ type CustomerOption = { id: number; name: string };
 
 const PAGE_SIZE = 50;
 const salesCache = createLocalCache<SalesData>("sales", { ttlMs: 5 * 60_000 });
-const keyFor = (q: string, s: Sort, p: number) => `${q}|${s.col}|${s.dir}|p${p}`;
+const keyFor = (q: string, s: Sort, p: number, from: string | null, to: string | null) =>
+  `${q}|${s.col}|${s.dir}|p${p}|${from ?? ""}|${to ?? ""}`;
 
 export default function SalesPage() {
   const initSort: Sort = { col: "date", dir: "desc" };
-  const cached0 = salesCache.get(keyFor("", initSort, 1));
+  const cached0 = salesCache.get(keyFor("", initSort, 1, null, null));
   const [rows, setRows] = useState<SaleRow[]>(cached0?.rows ?? []);
   const [total, setTotal] = useState(cached0?.total ?? 0);
   const [totalKg, setTotalKg] = useState(cached0?.totalKg ?? 0);
@@ -50,6 +53,7 @@ export default function SalesPage() {
   const [loading, setLoading] = useState(!cached0);
   const [error, setError] = useState(false);
   const [search, setSearch] = useState("");
+  const [dateRange, setDateRange] = useState<DateRangeSelection>({ preset: "all" });
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), detail: "", packing: "", unit: "", qty: "", rate: "", amount: "", saleKg: "", saleKgUnit: "Kg", customerId: "", paidNow: "", paidMethod: "", paidNote: "" });
@@ -70,11 +74,14 @@ export default function SalesPage() {
   const toast = useToast();
   const confirm = useConfirm();
 
-  const load = useCallback(async (q: string, p: number, s: Sort, opts?: { silent?: boolean }) => {
+  const load = useCallback(async (q: string, p: number, s: Sort, from: string | null, to: string | null, opts?: { silent?: boolean }) => {
     if (!opts?.silent) { setLoading(true); setError(false); }
     try {
-      const data = await api.get<SalesData>(`/sales?search=${encodeURIComponent(q)}&page=${p}&limit=${PAGE_SIZE}&sort=${s.col}&dir=${s.dir}`);
-      salesCache.set(keyFor(q, s, p), data);
+      const qs = new URLSearchParams({ search: q, page: String(p), limit: String(PAGE_SIZE), sort: s.col, dir: s.dir });
+      if (from) qs.set("from", from);
+      if (to) qs.set("to", to);
+      const data = await api.get<SalesData>(`/sales?${qs}`);
+      salesCache.set(keyFor(q, s, p, from, to), data);
       setRows(data.rows); setTotal(data.total); setTotalKg(data.totalKg ?? 0); setTotalL(data.totalL ?? 0); setCount(data.count);
     } catch {
       if (!opts?.silent) setError(true);
@@ -96,15 +103,16 @@ export default function SalesPage() {
   }, []);
 
   useEffect(() => {
+    const { from, to } = resolveDateRange(dateRange);
     const initial = new URLSearchParams(window.location.search).get("search")?.trim() ?? "";
-    if (initial) { setSearch(initial); setPage(1); load(initial, 1, initSort); return; }
-    const cached = salesCache.get(keyFor("", initSort, 1));
+    if (initial) { setSearch(initial); setPage(1); load(initial, 1, initSort, from, to); return; }
+    const cached = salesCache.get(keyFor("", initSort, 1, from, to));
     if (cached) {
       setRows(cached.rows); setTotal(cached.total); setCount(cached.count);
       setLoading(false);
-      load("", 1, initSort, { silent: true });
+      load("", 1, initSort, from, to, { silent: true });
     } else {
-      load("", 1, initSort);
+      load("", 1, initSort, from, to);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -115,9 +123,10 @@ export default function SalesPage() {
   }, []);
 
   const applyView = (q: string, p: number, s: Sort) => {
-    const cached = salesCache.get(keyFor(q, s, p));
+    const { from, to } = resolveDateRange(dateRange);
+    const cached = salesCache.get(keyFor(q, s, p, from, to));
     if (cached) { setRows(cached.rows); setTotal(cached.total); setTotalKg(cached.totalKg ?? 0); setTotalL(cached.totalL ?? 0); setCount(cached.count); }
-    load(q, p, s);
+    load(q, p, s, from, to);
   };
 
   // Fetch the monthly roll-up the first time the user switches to that view.
@@ -133,6 +142,14 @@ export default function SalesPage() {
   };
   const onSort = (col: string) => { const s = nextSort(sort, col); setSort(s); setPage(1); applyView(search, 1, s); };
   const goPage = (p: number) => { setPage(p); applyView(search, p, sort); };
+
+  const handleDateRangeChange = (v: DateRangeSelection) => {
+    setDateRange(v); setPage(1);
+    const { from, to } = resolveDateRange(v);
+    const cached = salesCache.get(keyFor(search, sort, 1, from, to));
+    if (cached) { setRows(cached.rows); setTotal(cached.total); setTotalKg(cached.totalKg ?? 0); setTotalL(cached.totalL ?? 0); setCount(cached.count); }
+    load(search, 1, sort, from, to);
+  };
 
   const handleAutoAmount = () => {
     const q = Number(form.qty), r = Number(form.rate);
@@ -177,7 +194,8 @@ export default function SalesPage() {
       salesCache.clear();
       if (months.length) loadMonths();
       setPage(1);
-      load(search, 1, sort);
+      const { from, to } = resolveDateRange(dateRange);
+      load(search, 1, sort, from, to);
       toast.success(
         !form.customerId ? "Sale added"
           : paidNow > 0 ? "Sale added & payment posted to ledger"
@@ -199,7 +217,8 @@ export default function SalesPage() {
       await api.del(`/sales/${id}`);
       if (del?.customerId) customerDetailCache.delete(String(del.customerId));
       salesCache.clear();
-      load(search, page, sort, { silent: true });
+      const { from, to } = resolveDateRange(dateRange);
+      load(search, page, sort, from, to, { silent: true });
       toast.success("Sale deleted");
     } catch { setRows(prevRows); setTotal(prevTotal); setCount(prevCount); toast.error("Couldn't delete sale"); }
   };
@@ -236,7 +255,8 @@ export default function SalesPage() {
       if (edited?.customerId) customerDetailCache.delete(String(edited.customerId));
       salesCache.clear();
       if (months.length) loadMonths();
-      load(search, page, sort, { silent: true });
+      const { from, to } = resolveDateRange(dateRange);
+      load(search, page, sort, from, to, { silent: true });
       toast.success("Sale updated");
     } catch { setRows(prevRows); toast.error("Couldn't update sale"); }
   };
@@ -244,7 +264,11 @@ export default function SalesPage() {
   const exportXlsx = async () => {
     setExporting(true);
     try {
-      const all = await fetchAllRows<SaleRow>("/sales", { search, sort: sort.col, dir: sort.dir });
+      const { from, to } = resolveDateRange(dateRange);
+      const params: Record<string, string> = { search, sort: sort.col, dir: sort.dir };
+      if (from) params.from = from;
+      if (to) params.to = to;
+      const all = await fetchAllRows<SaleRow>("/sales", params);
       const { buildSalesXlsx } = await import("@/lib/reports-xlsx");
       const blob = await buildSalesXlsx(all, search ? `Filtered: "${search}"` : undefined);
       await saveOrShareBlob(blob, `sales_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -382,7 +406,12 @@ export default function SalesPage() {
             <button onClick={() => switchView("list")} className={`px-3 py-1.5 font-medium transition-colors ${view === "list" ? "bg-surface text-ink" : "text-muted hover:text-ink"}`}>Entries</button>
             <button onClick={() => switchView("month")} className={`px-3 py-1.5 font-medium transition-colors border-l border-line-strong ${view === "month" ? "bg-surface text-ink" : "text-muted hover:text-ink"}`}>By month</button>
           </div>
-          {view === "list" && <SearchInput value={search} onChange={handleSearch} placeholder="Search sales…" className="w-full max-w-xs" />}
+          {view === "list" && (
+            <>
+              <SearchInput value={search} onChange={handleSearch} placeholder="Search sales…" className="w-full max-w-xs" />
+              <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
+            </>
+          )}
         </div>
         <div className="text-right flex-shrink-0">
           <p className="text-[11px] text-muted uppercase tracking-wider">Total</p>
@@ -417,7 +446,7 @@ export default function SalesPage() {
               {loading ? (
                 <TableSkeleton rows={6} cols={10} />
               ) : error ? (
-                <tr><td colSpan={10}><ErrorState onRetry={() => load(search, page, sort)} compact /></td></tr>
+                <tr><td colSpan={10}><ErrorState onRetry={() => { const { from, to } = resolveDateRange(dateRange); load(search, page, sort, from, to); }} compact /></td></tr>
               ) : rows.length === 0 ? (
                 <tr><td colSpan={10}><EmptyState icon={TrendingUp} compact title={search ? "No matches" : "No sales yet"} description={search ? `Nothing matches “${search}”.` : "Record your first sale with the “Add Sale” button."} /></td></tr>
               ) : rows.map(r => editId === r.id ? (
