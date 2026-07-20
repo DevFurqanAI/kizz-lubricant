@@ -342,11 +342,12 @@ export type PnlMonthRow = {
 };
 export type PnlGrand = Omit<PnlMonthRow, "month">;
 
-export async function buildPnlXlsx(rows: PnlMonthRow[], grand: PnlGrand): Promise<Blob> {
+export async function buildPnlXlsx(rows: PnlMonthRow[], grand: PnlGrand, filterNote?: string): Promise<Blob> {
   const profitColor = (p: number) => (p >= 0 ? GREEN : DANGER);
   return buildReportBlob<PnlMonthRow>({
     subtitle: "PROFIT & LOSS REPORT",
     sheetName: "P&L",
+    filterNote,
     columns: [
       { header: "Month", value: (r) => monthLabel(r.month) },
       { header: "Sales", align: "right", numFmt: NUM_FMT, value: (r) => r.sales },
