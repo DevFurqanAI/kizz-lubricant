@@ -91,7 +91,7 @@ export default function DashboardPage() {
   const sparkPoints = (cat: Category) => {
     if (periodKey === "today") return data.sparklines.today[cat].map((d) => ({ label: dayLabel(d.date), value: d.total }));
     if (periodKey === "month") return data.sparklines.month[cat].map((d) => ({ label: dayLabel(d.date), value: d.total }));
-    if (periodKey === "year") return yearSlice(data.sparklines.all[cat], year).map((d) => ({ label: monthLabel(d.month), value: d.total }));
+    if (periodKey === "year") return year ? yearSlice(data.sparklines.all[cat], year).map((d) => ({ label: monthLabel(d.month), value: d.total })) : [];
     return data.sparklines.all[cat].map((d) => ({ label: monthLabel(d.month), value: d.total }));
   };
 
