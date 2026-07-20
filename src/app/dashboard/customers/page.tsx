@@ -3,7 +3,8 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { api, fetchAllRows } from "@/lib/api";
 import { formatMoney } from "@/lib/utils";
 import { customerDetailCache, customerListCache, type CustomerWithBalance } from "@/lib/customercache";
 import { useToast } from "@/components/toast";
@@ -11,13 +12,78 @@ import { useConfirm } from "@/components/confirm";
 import { Pagination } from "@/components/pagination";
 import { EmptyState, ErrorState, CardGridSkeleton } from "@/components/states";
 import { SearchInput } from "@/components/search-input";
-import { Users } from "lucide-react";
+import { saveOrShareBlob } from "@/lib/file-download";
+import { Users, FileSpreadsheet } from "lucide-react";
 import { validateCustomer, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 const PAGE_SIZE = 50;
 const cacheKey = (q: string, page: number) => `${q}|p${page}`;
+const VIEW_STYLES = ["table", "cards"] as const;
+type ViewStyle = typeof VIEW_STYLES[number];
+const VIEW_LABELS: Record<ViewStyle, string> = { table: "Table", cards: "Cards" };
+
+type EditFormT = { name: string; owner: string; cnic: string; address: string; phone: string; whatsapp: string; email: string };
+
+function EditRowInputs({
+  editForm,
+  setEditForm,
+  dense,
+}: {
+  editForm: EditFormT;
+  setEditForm: React.Dispatch<React.SetStateAction<EditFormT>>;
+  dense?: boolean;
+}) {
+  return (
+    <>
+      <input
+        value={editForm.name}
+        onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+        placeholder="Name *"
+        className={`input ${dense ? "px-2.5 py-1.5 text-sm w-full sm:flex-1 sm:min-w-0 font-semibold" : "px-2.5 py-1.5 text-sm w-full font-semibold"}`}
+      />
+      <input
+        value={editForm.owner}
+        onChange={(e) => setEditForm((f) => ({ ...f, owner: e.target.value }))}
+        placeholder="Owner"
+        className={`input ${dense ? "px-2.5 py-1.5 text-xs w-full sm:w-32" : "px-2.5 py-1.5 text-xs w-full"}`}
+      />
+      <input
+        value={editForm.cnic}
+        onChange={(e) => setEditForm((f) => ({ ...f, cnic: e.target.value }))}
+        placeholder="CNIC"
+        className={`input ${dense ? "px-2.5 py-1.5 text-xs w-full sm:w-32" : "px-2.5 py-1.5 text-xs w-full"}`}
+      />
+      <input
+        value={editForm.phone}
+        onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+        placeholder="Cell #"
+        className={`input ${dense ? "px-2.5 py-1.5 text-xs w-full sm:w-32" : "px-2.5 py-1.5 text-xs w-full"}`}
+      />
+      <input
+        type="email"
+        value={editForm.email}
+        onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+        placeholder="Email"
+        className={`input ${dense ? "px-2.5 py-1.5 text-xs w-full sm:w-40" : "px-2.5 py-1.5 text-xs w-full"}`}
+      />
+      <input
+        value={editForm.whatsapp}
+        onChange={(e) => setEditForm((f) => ({ ...f, whatsapp: e.target.value }))}
+        placeholder="WhatsApp #"
+        className={`input ${dense ? "px-2.5 py-1.5 text-xs w-full sm:w-32" : "px-2.5 py-1.5 text-xs w-full"}`}
+      />
+      <input
+        value={editForm.address}
+        onChange={(e) => setEditForm((f) => ({ ...f, address: e.target.value }))}
+        placeholder="Address"
+        className={`input ${dense ? "px-2.5 py-1.5 text-xs w-full sm:flex-1 sm:min-w-0" : "px-2.5 py-1.5 text-xs w-full"}`}
+      />
+    </>
+  );
+}
 
 export default function CustomersPage() {
+  const router = useRouter();
   const first = customerListCache.get(cacheKey("", 1));
   const [customers, setCustomers] = useState<CustomerWithBalance[]>(() => first?.rows ?? []);
   const [count, setCount] = useState(() => first?.count ?? 0);
@@ -30,7 +96,9 @@ export default function CustomersPage() {
   const [form, setForm] = useState({ name: "", accountTitle: "", owner: "", cnic: "", address: "", phone: "", whatsapp: "", email: "" });
   const [formErrors, setFormErrors] = useState<FieldErrors>({});
   const [editId, setEditId] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", owner: "", cnic: "", address: "", phone: "", whatsapp: "" });
+  const [editForm, setEditForm] = useState<EditFormT>({ name: "", owner: "", cnic: "", address: "", phone: "", whatsapp: "", email: "" });
+  const [viewStyle, setViewStyle] = useState<ViewStyle>("table");
+  const [exporting, setExporting] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toast = useToast();
   const confirm = useConfirm();
@@ -96,7 +164,7 @@ export default function CustomersPage() {
   const startEdit = (c: CustomerWithBalance, e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
     setEditId(c.id);
-    setEditForm({ name: c.name, owner: c.owner ?? "", cnic: c.cnic ?? "", address: c.address ?? "", phone: c.phone ?? "", whatsapp: c.whatsapp ?? "" });
+    setEditForm({ name: c.name, owner: c.owner ?? "", cnic: c.cnic ?? "", address: c.address ?? "", phone: c.phone ?? "", whatsapp: c.whatsapp ?? "", email: c.email ?? "" });
   };
 
   const cancelEdit = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setEditId(null); };
@@ -132,6 +200,22 @@ export default function CustomersPage() {
     } catch { setCustomers(prev); toast.error("Couldn't delete customer"); }
   };
 
+  const cycleStyle = () => setViewStyle(s => VIEW_STYLES[(VIEW_STYLES.indexOf(s) + 1) % VIEW_STYLES.length]);
+
+  const exportXlsx = async () => {
+    setExporting(true);
+    try {
+      const all = await fetchAllRows<CustomerWithBalance>("/customers", { search });
+      const { buildCustomersXlsx } = await import("@/lib/reports-xlsx");
+      const blob = await buildCustomersXlsx(all, search ? `Filtered: "${search}"` : undefined);
+      await saveOrShareBlob(blob, `customers_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch {
+      toast.error("Couldn't export customers");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -142,9 +226,15 @@ export default function CustomersPage() {
           </div>
           <p className="mt-1 text-sm text-muted">Everyone you buy from or sell to. Open a card to see their full history and what they owe.</p>
         </div>
-        <button onClick={() => setShowForm(s => !s)} className="btn-primary">
-          + Add Customer
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={exportXlsx} disabled={exporting || customers.length === 0} className="btn-secondary">
+            <FileSpreadsheet className="w-4 h-4" strokeWidth={2} />
+            {exporting ? "Exporting…" : "Export Excel"}
+          </button>
+          <button onClick={() => setShowForm(s => !s)} className="btn-primary">
+            + Add Customer
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -175,18 +265,26 @@ export default function CustomersPage() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <SearchInput value={search} onChange={handleSearch} placeholder="Search customers…" className="max-w-sm w-full" />
-        {!loading && !error && customers.length > 0 && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px]">
-            <span className="flex items-center gap-1.5 text-muted">
-              <span className="w-2 h-2 rounded-full bg-warning" /> <span className="text-warning font-medium">Owes you</span>
-            </span>
-            <span className="flex items-center gap-1.5 text-muted">
-              <span className="w-2 h-2 rounded-full bg-success" /> <span className="text-success font-medium">Paid ahead</span>
-            </span>
-          </div>
-        )}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <SearchInput value={search} onChange={handleSearch} placeholder="Search customers…" className="sm:flex-1 sm:min-w-[200px] sm:max-w-sm" />
+        <div className="flex flex-wrap items-center gap-3">
+          {!loading && !error && customers.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px]">
+              <span className="flex items-center gap-1.5 text-muted">
+                <span className="w-2 h-2 rounded-full bg-warning" /> <span className="text-warning font-medium">Owes you</span>
+              </span>
+              <span className="flex items-center gap-1.5 text-muted">
+                <span className="w-2 h-2 rounded-full bg-success" /> <span className="text-success font-medium">Paid ahead</span>
+              </span>
+            </div>
+          )}
+          <button
+            onClick={cycleStyle}
+            className="btn-sm inline-flex items-center gap-2 rounded-lg bg-accent-tint text-accent-hover font-medium hover:brightness-95 transition-[filter]"
+          >
+            View: {VIEW_LABELS[viewStyle]}
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -202,6 +300,45 @@ export default function CustomersPage() {
             action={!search && <button onClick={() => setShowForm(true)} className="btn-primary">+ Add Customer</button>}
           />
         </div>
+      ) : viewStyle === "table" ? (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[640px]">
+              <thead><tr className="bg-black/[0.02] border-b border-line">{["Name", "CNIC", "Phone", "Email", "Address", "Balance", ""].map(h => <th key={h} className={`th ${h === "Balance" ? "text-right" : "text-left"}`}>{h}</th>)}</tr></thead>
+              <tbody className="divide-y divide-line">
+                {customers.map(c => {
+                  const bal = c.balance ?? 0;
+                  return editId === c.id ? (
+                    <tr key={c.id} className="bg-accent-tint/40">
+                      <td className="px-4 py-2" colSpan={6}>
+                        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+                          <EditRowInputs editForm={editForm} setEditForm={setEditForm} />
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap"><div className="flex items-center gap-4"><button onClick={(e) => saveEdit(c.id, e)} className="text-success font-semibold">✓</button><button onClick={cancelEdit} className="text-muted">×</button></div></td>
+                    </tr>
+                  ) : (
+                    <tr key={c.id} onClick={() => router.push(`/dashboard/customers/${c.id}`)} className="hover:bg-black/[0.015] transition-colors cursor-pointer">
+                      <td className="px-4 py-3 font-medium text-ink">{c.name}</td>
+                      <td className="px-4 py-3 text-muted text-xs">{c.cnic || "—"}</td>
+                      <td className="px-4 py-3 text-muted text-xs whitespace-nowrap">{c.phone || "—"}</td>
+                      <td className="px-4 py-3 text-muted text-xs">{c.email || "—"}</td>
+                      <td className="px-4 py-3 text-muted text-xs">{c.address || "—"}</td>
+                      <td className={`px-4 py-3 text-right font-mono font-semibold tabular-nums ${bal > 0 ? "text-warning" : bal < 0 ? "text-success" : "text-muted"}`}>{formatMoney(bal)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-4">
+                          <button onClick={(e) => startEdit(c, e)} className="text-muted/50 hover:text-accent transition-colors" aria-label="Edit customer">✎</button>
+                          <button onClick={(e) => handleDelete(c.id, e)} className="text-muted/50 hover:text-danger transition-colors text-lg leading-none" aria-label="Delete customer">×</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {customers.map((c) => {
@@ -215,6 +352,7 @@ export default function CustomersPage() {
                   <input value={editForm.owner} onChange={e => setEditForm(f => ({ ...f, owner: e.target.value }))} placeholder="Owner" className="input px-2.5 py-1.5 text-xs" />
                   <input value={editForm.address} onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))} placeholder="Address" className="input px-2.5 py-1.5 text-xs" />
                   <input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} placeholder="Cell #" className="input px-2.5 py-1.5 text-xs" />
+                  <input type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} placeholder="Email" className="input px-2.5 py-1.5 text-xs" />
                   <input value={editForm.whatsapp} onChange={e => setEditForm(f => ({ ...f, whatsapp: e.target.value }))} placeholder="WhatsApp #" className="input px-2.5 py-1.5 text-xs" />
                   <input value={editForm.cnic} onChange={e => setEditForm(f => ({ ...f, cnic: e.target.value }))} placeholder="CNIC" className="input px-2.5 py-1.5 text-xs" />
                   <div className="flex gap-4 pt-1">

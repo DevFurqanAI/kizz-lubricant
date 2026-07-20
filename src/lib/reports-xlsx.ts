@@ -22,6 +22,7 @@ const TEXT = "FF1F2430";
 const MUTED = "FF6B7280";
 const GREEN = "FF047857";
 const DANGER = "FFB42318";
+const AMBER = "FFB45309";
 const WHITE = "FFFFFFFF";
 
 const NUM_FMT = "#,##0";
@@ -292,6 +293,39 @@ export async function buildSalaryXlsx(rows: SalaryReportRow[], filterNote?: stri
       { header: "Paid Via", value: (r) => r.account || "" },
     ],
     totals: [{ col: 2, value: rows.reduce((a, r) => a + toNum(r.amount), 0) }],
+    rows,
+  });
+}
+
+export type CustomerReportRow = {
+  name: string;
+  cnic: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  balance?: number;
+};
+
+export async function buildCustomersXlsx(rows: CustomerReportRow[], filterNote?: string): Promise<Blob> {
+  return buildReportBlob<CustomerReportRow>({
+    subtitle: "CUSTOMERS REPORT",
+    sheetName: "Customers",
+    filterNote,
+    columns: [
+      { header: "Name", minWidth: 18, value: (r) => r.name },
+      { header: "CNIC", value: (r) => r.cnic || "" },
+      { header: "Phone", value: (r) => r.phone || "" },
+      { header: "Email", value: (r) => r.email || "" },
+      { header: "Address", minWidth: 22, maxWidth: 36, value: (r) => r.address || "" },
+      {
+        header: "Balance",
+        align: "right",
+        numFmt: NUM_FMT,
+        value: (r) => r.balance ?? 0,
+        color: (r) => ((r.balance ?? 0) > 0 ? AMBER : (r.balance ?? 0) < 0 ? GREEN : undefined),
+      },
+    ],
+    totals: [{ col: 5, value: rows.reduce((a, r) => a + (r.balance ?? 0), 0) }],
     rows,
   });
 }
