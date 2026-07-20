@@ -10,12 +10,22 @@ export type ListParams = {
   offset: number;
   sort: string; // validated against the caller's whitelist
   dir: "asc" | "desc";
+  from: string | null; // inclusive ISO date lower bound, or null = unbounded
+  to: string | null; // inclusive ISO date upper bound, or null = unbounded
 };
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Only accept a well-formed "YYYY-MM-DD" — anything else is treated as absent. */
+function parseIsoDate(v: string | null): string | null {
+  return v && ISO_DATE.test(v) ? v : null;
+}
+
 /**
- * Parse + sanitize list query params (search / page / limit / sort / dir).
- * `sortable` is the whitelist of allowed sort keys → the sort key is never
- * taken raw from the client, so it can't be used for SQL injection.
+ * Parse + sanitize list query params (search / page / limit / sort / dir /
+ * from / to). `sortable` is the whitelist of allowed sort keys → the sort
+ * key is never taken raw from the client, so it can't be used for SQL
+ * injection.
  */
 export function parseListParams(
   req: NextRequest,
@@ -28,5 +38,8 @@ export function parseListParams(
   const requested = sp.get("sort") ?? "";
   const sort = opts.sortable.includes(requested) ? requested : opts.defaultSort;
   const dir = sp.get("dir") === "asc" ? "asc" : "desc";
-  return { search, page, limit, offset: (page - 1) * limit, sort, dir };
+  let from = parseIsoDate(sp.get("from"));
+  let to = parseIsoDate(sp.get("to"));
+  if (from && to && from > to) [from, to] = [to, from];
+  return { search, page, limit, offset: (page - 1) * limit, sort, dir, from, to };
 }
