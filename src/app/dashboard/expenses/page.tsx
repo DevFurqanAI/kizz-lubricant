@@ -1,6 +1,7 @@
 
 "use client";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { api, fetchAllRows } from "@/lib/api";
 import { formatMoney, fmtDate } from "@/lib/utils";
 import { getCache, setCache, clearCache } from "@/lib/expenses-cache";
@@ -12,19 +13,25 @@ import { Pagination } from "@/components/pagination";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
 import { SortHeader, type Sort, nextSort } from "@/components/sort-header";
 import { SearchInput } from "@/components/search-input";
+import { AmountRangeFilter } from "@/components/amount-range-filter";
+import { FilterBar } from "@/components/filter-bar";
 import { validateAmountEntry, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 import { DateRangeFilter } from "@/components/date-range-filter";
-import { resolveDateRange, type DateRangeSelection } from "@/lib/date-range";
+import { resolveDateRange, encodeDateRange, decodeDateRange, type DateRangeSelection } from "@/lib/date-range";
+import { buildQueryString } from "@/lib/url-filter-sync";
 
 type Row = { id: number; date: string; detail: string; amount: string };
 type ListResponse = { rows: Row[]; total: number; months: number; count: number };
 
 const PAGE_SIZE = 50;
-const keyFor = (q: string, s: Sort, p: number, from: string | null, to: string | null) =>
-  `${q || "__all__"}|${s.col}|${s.dir}|p${p}|${from ?? ""}|${to ?? ""}`;
+const keyFor = (q: string, s: Sort, p: number, from: string | null, to: string | null, amountMin: string, amountMax: string) =>
+  `${q || "__all__"}|${s.col}|${s.dir}|p${p}|${from ?? ""}|${to ?? ""}|${amountMin}|${amountMax}`;
 
 export default function ExpensesPage() {
   const initSort: Sort = { col: "date", dir: "desc" };
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
   const [months, setMonths] = useState(0);
@@ -35,6 +42,8 @@ export default function ExpensesPage() {
   const [error, setError] = useState(false);
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState<DateRangeSelection>({ preset: "all" });
+  const [amountMin, setAmountMin] = useState("");
+  const [amountMax, setAmountMax] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), detail: "", amount: "" });
@@ -51,8 +60,8 @@ export default function ExpensesPage() {
   const confirm = useConfirm();
 
   // ── Load with 5-min stale-while-revalidate cache ───────
-  const load = useCallback(async (q: string, p: number, s: Sort, from: string | null, to: string | null, opts?: { silent?: boolean }) => {
-    const cached = getCache<ListResponse>(keyFor(q, s, p, from, to));
+  const load = useCallback(async (q: string, p: number, s: Sort, from: string | null, to: string | null, amountMin: string, amountMax: string, opts?: { silent?: boolean }) => {
+    const cached = getCache<ListResponse>(keyFor(q, s, p, from, to, amountMin, amountMax));
     if (cached) {
       setRows(cached.rows); setTotal(cached.total); setMonths(cached.months ?? 0); setCount(cached.count);
       setLoading(false);
@@ -64,9 +73,11 @@ export default function ExpensesPage() {
       const qs = new URLSearchParams({ search: q, page: String(p), limit: String(PAGE_SIZE), sort: s.col, dir: s.dir });
       if (from) qs.set("from", from);
       if (to) qs.set("to", to);
+      if (amountMin) qs.set("amountMin", amountMin);
+      if (amountMax) qs.set("amountMax", amountMax);
       const data = await api.get<ListResponse>(`/expenses?${qs}`);
       setRows(data.rows); setTotal(data.total); setMonths(data.months ?? 0); setCount(data.count);
-      setCache(keyFor(q, s, p, from, to), data);
+      setCache(keyFor(q, s, p, from, to, amountMin, amountMax), data);
     } catch {
       if (!cached && !opts?.silent) setError(true);
     } finally {
@@ -75,32 +86,69 @@ export default function ExpensesPage() {
   }, []);
 
   useEffect(() => {
-    const initial = new URLSearchParams(window.location.search).get("search")?.trim() ?? "";
-    if (initial) setSearch(initial);
-    const { from, to } = resolveDateRange(dateRange);
-    load(initial, 1, initSort, from, to);
-  }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
+    const initialSearch = searchParams.get("search")?.trim() ?? "";
+    const initialRange = decodeDateRange(searchParams);
+    const initialAmountMin = searchParams.get("amountMin") ?? "";
+    const initialAmountMax = searchParams.get("amountMax") ?? "";
+    setSearch(initialSearch);
+    setDateRange(initialRange);
+    setAmountMin(initialAmountMin);
+    setAmountMax(initialAmountMax);
+    const { from, to } = resolveDateRange(initialRange);
+    setPage(1);
+    load(initialSearch, 1, initSort, from, to, initialAmountMin, initialAmountMax);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const syncUrl = (overrides: Partial<{ search: string; dateRange: DateRangeSelection; amountMin: string; amountMax: string; sort: Sort; page: number }> = {}) => {
+    const s = overrides.search ?? search;
+    const dr = overrides.dateRange ?? dateRange;
+    const aMin = overrides.amountMin ?? amountMin;
+    const aMax = overrides.amountMax ?? amountMax;
+    const srt = overrides.sort ?? sort;
+    const p = overrides.page ?? page;
+    router.replace(`${pathname}?${buildQueryString({ search: s, ...encodeDateRange(dr), amountMin: aMin, amountMax: aMax, sort: srt.col, dir: srt.dir, page: p })}`, { scroll: false });
+  };
 
   const onSearchChange = (value: string) => {
     setSearch(value); setPage(1);
     if (searchDebounce.current) clearTimeout(searchDebounce.current);
     const { from, to } = resolveDateRange(dateRange);
-    searchDebounce.current = setTimeout(() => load(value, 1, sort, from, to), 250);
+    searchDebounce.current = setTimeout(() => { load(value, 1, sort, from, to, amountMin, amountMax); syncUrl({ search: value, page: 1 }); }, 250);
   };
   const onSort = (col: string) => {
     const s = nextSort(sort, col); setSort(s); setPage(1);
     const { from, to } = resolveDateRange(dateRange);
-    load(search, 1, s, from, to);
+    load(search, 1, s, from, to, amountMin, amountMax);
+    syncUrl({ sort: s, page: 1 });
   };
   const goPage = (p: number) => {
     setPage(p);
     const { from, to } = resolveDateRange(dateRange);
-    load(search, p, sort, from, to);
+    load(search, p, sort, from, to, amountMin, amountMax);
+    syncUrl({ page: p });
   };
   const handleDateRangeChange = (v: DateRangeSelection) => {
     setDateRange(v); setPage(1);
     const { from, to } = resolveDateRange(v);
-    load(search, 1, sort, from, to);
+    load(search, 1, sort, from, to, amountMin, amountMax);
+    syncUrl({ dateRange: v, page: 1 });
+  };
+
+  const handleFilterChange = (next: Partial<{ amountMin: string; amountMax: string }>) => {
+    const nextMin = next.amountMin ?? amountMin;
+    const nextMax = next.amountMax ?? amountMax;
+    setAmountMin(nextMin); setAmountMax(nextMax);
+    setPage(1);
+    const { from, to } = resolveDateRange(dateRange);
+    load(search, 1, sort, from, to, nextMin, nextMax);
+    syncUrl({ amountMin: nextMin, amountMax: nextMax, page: 1 });
+  };
+
+  const clearFilters = () => {
+    setDateRange({ preset: "all" }); setAmountMin(""); setAmountMax(""); setPage(1);
+    load(search, 1, sort, null, null, "", "");
+    syncUrl({ dateRange: { preset: "all" }, amountMin: "", amountMax: "", page: 1 });
   };
 
   const handleSave = async () => {
@@ -115,7 +163,7 @@ export default function ExpensesPage() {
       clearCache();
       setPage(1);
       const { from, to } = resolveDateRange(dateRange);
-      load(search, 1, sort, from, to);
+      load(search, 1, sort, from, to, amountMin, amountMax);
       toast.success("Expense added");
     } catch {
       toast.error("Couldn't add expense");
@@ -138,7 +186,7 @@ export default function ExpensesPage() {
       await api.del(`/expenses/${id}`);
       clearCache();
       const { from, to } = resolveDateRange(dateRange);
-      load(search, page, sort, from, to, { silent: true });
+      load(search, page, sort, from, to, amountMin, amountMax, { silent: true });
       toast.success("Expense deleted");
     } catch {
       setRows(prevRows);
@@ -173,7 +221,7 @@ export default function ExpensesPage() {
       clearCache();
       cancelEdit();
       const { from, to } = resolveDateRange(dateRange);
-      load(search, page, sort, from, to, { silent: true }); // reconcile total + ordering from server
+      load(search, page, sort, from, to, amountMin, amountMax, { silent: true }); // reconcile total + ordering from server
       toast.success("Expense updated");
     } catch {
       setRows(prevRows); // rollback on failure
@@ -193,6 +241,8 @@ export default function ExpensesPage() {
       const params: Record<string, string> = { search, sort: sort.col, dir: sort.dir };
       if (from) params.from = from;
       if (to) params.to = to;
+      if (amountMin) params.amountMin = amountMin;
+      if (amountMax) params.amountMax = amountMax;
       const all = await fetchAllRows<Row>("/expenses", params);
       const { buildExpensesXlsx } = await import("@/lib/reports-xlsx");
       const blob = await buildExpensesXlsx(all, search ? `Filtered: "${search}"` : undefined);
@@ -296,10 +346,11 @@ export default function ExpensesPage() {
       </div>
 
       {/* ── Search + date range ──────────────────────────────── */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <SearchInput value={search} onChange={onSearchChange} placeholder="Search expenses…" className="max-w-sm" />
+      <FilterBar active={!!(search || dateRange.preset !== "all" || amountMin || amountMax)} onClear={clearFilters}>
+        <SearchInput value={search} onChange={onSearchChange} placeholder="Search expenses…" className="w-full max-w-xs" />
         <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
-      </div>
+        <AmountRangeFilter min={amountMin} max={amountMax} onChange={(min, max) => handleFilterChange({ amountMin: min, amountMax: max })} />
+      </FilterBar>
 
       {/* ── Desktop / tablet table ─────────────────────────── */}
       <div className="hidden sm:block card overflow-hidden">
@@ -317,7 +368,7 @@ export default function ExpensesPage() {
               {loading
                 ? <TableSkeleton rows={6} cols={4} />
                 : error
-                ? <tr><td colSpan={4}><ErrorState onRetry={() => { const { from, to } = resolveDateRange(dateRange); load(search, page, sort, from, to); }} compact /></td></tr>
+                ? <tr><td colSpan={4}><ErrorState onRetry={() => { const { from, to } = resolveDateRange(dateRange); load(search, page, sort, from, to, amountMin, amountMax); }} compact /></td></tr>
                 : rows.length === 0
                 ? (
                   <tr>
@@ -432,7 +483,7 @@ export default function ExpensesPage() {
               <div key={i} className="h-16 card animate-pulse" />
             ))
           : error
-          ? <div className="card"><ErrorState onRetry={() => { const { from, to } = resolveDateRange(dateRange); load(search, page, sort, from, to); }} compact /></div>
+          ? <div className="card"><ErrorState onRetry={() => { const { from, to } = resolveDateRange(dateRange); load(search, page, sort, from, to, amountMin, amountMax); }} compact /></div>
           : rows.length === 0
           ? (
             <div className="card">
