@@ -1,4 +1,5 @@
 import { toNum, fmtDate, monthLabel } from "@/lib/utils";
+import type { PnlMonthRow } from "@/lib/pnl-range";
 
 /**
  * One shared builder behind every list-page Excel export (Sales, Purchasing,
@@ -330,16 +331,6 @@ export async function buildCustomersXlsx(rows: CustomerReportRow[], filterNote?:
   });
 }
 
-export type PnlMonthRow = {
-  month: string;
-  sales: number;
-  purchasing: number;
-  expenses: number;
-  salary: number;
-  totalCost: number;
-  profit: number;
-  margin: number;
-};
 export type PnlGrand = Omit<PnlMonthRow, "month">;
 
 export async function buildPnlXlsx(rows: PnlMonthRow[], grand: PnlGrand, filterNote?: string): Promise<Blob> {

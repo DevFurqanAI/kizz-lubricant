@@ -68,8 +68,12 @@ export default function PnlPage() {
     try {
       const { buildPnlXlsx } = await import("@/lib/reports-xlsx");
       const blob = await buildPnlXlsx(filteredRows, g, `Range: ${describeRange(range)}`);
-      const rangeSuffix =
-        range.preset === "custom" ? `${range.from}_to_${range.to}` : range.preset;
+      const rangeSuffix = (() => {
+        if (range.preset !== "custom") return range.preset;
+        let { from, to } = range;
+        if (from > to) [from, to] = [to, from];
+        return `${from}_to_${to}`;
+      })();
       await saveOrShareBlob(blob, `profit_loss_export_${rangeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch {
       toast.error("Couldn't export profit & loss");

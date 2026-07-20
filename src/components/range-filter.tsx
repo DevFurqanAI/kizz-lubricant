@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { monthLabel, cn } from "@/lib/utils";
 import type { PnlMonthRow, RangeSelection } from "@/lib/pnl-range";
 
@@ -25,6 +25,19 @@ export function RangeFilter({
   const [customTo, setCustomTo] = useState(months[months.length - 1] ?? "");
 
   const isCustom = value.preset === "custom";
+
+  // Re-sync custom bounds if `rows` changes (e.g. cache-hit render followed by
+  // a fresh fetch that adds a newer month) and the current selection is no
+  // longer valid against the new `months` list. Don't clobber a still-valid
+  // active custom selection.
+  useEffect(() => {
+    if (months.length === 0) return;
+    const first = months[0];
+    const last = months[months.length - 1];
+    if (!customFrom || !months.includes(customFrom)) setCustomFrom(first);
+    if (!customTo || !months.includes(customTo)) setCustomTo(last);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [months]);
 
   function applyCustom(from: string, to: string) {
     setCustomFrom(from);

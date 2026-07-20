@@ -55,6 +55,14 @@ export function recomputePnlGrand(rows: PnlMonthRow[]): Omit<PnlMonthRow, "month
   return { ...grand, margin };
 }
 
+/** "YYYY-MM" -> "Jan 2026", matching monthLabel() in src/lib/utils.ts. */
+function formatMonthKey(key: string): string {
+  if (!key) return key;
+  const [y, m] = key.split("-");
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${months[parseInt(m, 10) - 1]} ${y}`;
+}
+
 /** Plain-language description of the active range, for banner copy. */
 export function describeRange(range: RangeSelection): string {
   switch (range.preset) {
@@ -62,6 +70,10 @@ export function describeRange(range: RangeSelection): string {
     case "6m": return "last 6 months";
     case "12m": return "last 12 months";
     case "ytd": return "year to date";
-    case "custom": return "selected range";
+    case "custom": {
+      let { from, to } = range;
+      if (from > to) [from, to] = [to, from];
+      return `${formatMonthKey(from)} – ${formatMonthKey(to)}`;
+    }
   }
 }
