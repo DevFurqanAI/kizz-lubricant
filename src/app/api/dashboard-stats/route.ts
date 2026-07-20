@@ -25,12 +25,89 @@ const toPeriod = (res: { rows: Record<string, unknown>[] }) => {
   return { all: Number(r.t_all), today: Number(r.t_today), month: Number(r.t_month) };
 };
 
+type WideRow = { key: string; sales: string; purchasing: string; expenses: string; salary: string };
+
+/** Reshape a {key, sales, purchasing, expenses, salary} row set into one daily array per category. */
+function toDailyCategorySeries(rows: WideRow[]) {
+  return {
+    sales: rows.map((r) => ({ date: r.key, total: Number(r.sales) })),
+    purchasing: rows.map((r) => ({ date: r.key, total: Number(r.purchasing) })),
+    expenses: rows.map((r) => ({ date: r.key, total: Number(r.expenses) })),
+    salary: rows.map((r) => ({ date: r.key, total: Number(r.salary) })),
+  };
+}
+
+/** Reshape a {key, sales, purchasing, expenses, salary} row set into one monthly array per category. */
+function toMonthlyCategorySeries(rows: WideRow[]) {
+  return {
+    sales: rows.map((r) => ({ month: r.key, total: Number(r.sales) })),
+    purchasing: rows.map((r) => ({ month: r.key, total: Number(r.purchasing) })),
+    expenses: rows.map((r) => ({ month: r.key, total: Number(r.expenses) })),
+    salary: rows.map((r) => ({ month: r.key, total: Number(r.salary) })),
+  };
+}
+
+/** Zero-filled daily totals for all four categories between two dates (inclusive). */
+function dailySeries(fromSql: SQL, toSql: SQL) {
+  return db.execute(sql`
+    WITH days AS (
+      SELECT generate_series(${fromSql}, ${toSql}, interval '1 day')::date AS day
+    ),
+    s AS (SELECT date, SUM(amount) AS total FROM sales GROUP BY date),
+    p AS (SELECT date, SUM(amount) AS total FROM purchasing GROUP BY date),
+    e AS (SELECT date, SUM(amount) AS total FROM expenses GROUP BY date),
+    sa AS (SELECT date, SUM(amount) AS total FROM salary GROUP BY date)
+    SELECT
+      TO_CHAR(days.day, 'YYYY-MM-DD') AS key,
+      COALESCE(s.total, 0) AS sales,
+      COALESCE(p.total, 0) AS purchasing,
+      COALESCE(e.total, 0) AS expenses,
+      COALESCE(sa.total, 0) AS salary
+    FROM days
+    LEFT JOIN s ON s.date = days.day
+    LEFT JOIN p ON p.date = days.day
+    LEFT JOIN e ON e.date = days.day
+    LEFT JOIN sa ON sa.date = days.day
+    ORDER BY days.day
+  `);
+}
+
+/** Sparse monthly totals for all four categories — one row per month any category has data in. */
+function monthlySeries() {
+  return db.execute(sql`
+    WITH s AS (SELECT TO_CHAR(date, 'YYYY-MM') AS month, SUM(amount) AS total FROM sales GROUP BY 1),
+    p AS (SELECT TO_CHAR(date, 'YYYY-MM') AS month, SUM(amount) AS total FROM purchasing GROUP BY 1),
+    e AS (SELECT TO_CHAR(date, 'YYYY-MM') AS month, SUM(amount) AS total FROM expenses GROUP BY 1),
+    sa AS (SELECT TO_CHAR(date, 'YYYY-MM') AS month, SUM(amount) AS total FROM salary GROUP BY 1),
+    months AS (
+      SELECT month FROM s
+      UNION SELECT month FROM p
+      UNION SELECT month FROM e
+      UNION SELECT month FROM sa
+    )
+    SELECT
+      months.month AS key,
+      COALESCE(s.total, 0) AS sales,
+      COALESCE(p.total, 0) AS purchasing,
+      COALESCE(e.total, 0) AS expenses,
+      COALESCE(sa.total, 0) AS salary
+    FROM months
+    LEFT JOIN s ON s.month = months.month
+    LEFT JOIN p ON p.month = months.month
+    LEFT JOIN e ON e.month = months.month
+    LEFT JOIN sa ON sa.month = months.month
+    ORDER BY months.month
+  `);
+}
+
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    // One parallel batch: period sums for each flow, current-state balances, and the trend series.
+    const todayExpr = sql`(now() AT TIME ZONE 'Asia/Karachi')::date`;
+    const monthStartExpr = sql`date_trunc('month', (now() AT TIME ZONE 'Asia/Karachi'))::date`;
+
     const [
       salesRes,
       purchRes,
@@ -39,7 +116,9 @@ export async function GET() {
       [{ customerCount }],
       outstandingRes,
       balancesRes,
-      monthlyRes,
+      todayDailyRes,
+      monthDailyRes,
+      allMonthlyRes,
     ] = await Promise.all([
       periodSums(sales),
       periodSums(purchasing),
@@ -61,10 +140,9 @@ export async function GET() {
         ORDER BY ABS(COALESCE((SELECT balance FROM customer_entries ce WHERE ce.customer_id = c.id ORDER BY date DESC, id DESC LIMIT 1),0)) DESC NULLS LAST
         LIMIT 10
       `),
-      db.execute(sql`
-        SELECT TO_CHAR(date, 'YYYY-MM') AS month, COALESCE(SUM(amount), 0) AS total
-        FROM sales GROUP BY 1 ORDER BY 1
-      `),
+      dailySeries(sql`${todayExpr} - interval '13 days'`, todayExpr),
+      dailySeries(monthStartExpr, todayExpr),
+      monthlySeries(),
     ]);
 
     const outstanding = Number((outstandingRes.rows[0] as Record<string, string>).total_outstanding ?? 0);
@@ -79,7 +157,11 @@ export async function GET() {
         custCount: Number(customerCount),
       },
       topBalances: balancesRes.rows,
-      monthlySales: monthlyRes.rows,
+      sparklines: {
+        today: toDailyCategorySeries(todayDailyRes.rows as WideRow[]),
+        month: toDailyCategorySeries(monthDailyRes.rows as WideRow[]),
+        all: toMonthlyCategorySeries(allMonthlyRes.rows as WideRow[]),
+      },
     });
   } catch (err) {
     console.error("GET /dashboard-stats failed:", err);
