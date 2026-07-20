@@ -5,7 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
 import { salary } from "@/db/schema";
-import { asc, desc, sql, ilike, and, gte, lte } from "drizzle-orm";
+import { asc, desc, sql, ilike, and, gte, lte, eq } from "drizzle-orm";
 import { parseListParams } from "@/lib/pagination";
 import { validateSalary, hasErrors, firstError } from "@/lib/validation";
 
@@ -17,14 +17,20 @@ export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const { search, page, limit, offset, sort, dir, from, to } = parseListParams(req, {
+    const { search, page, limit, offset, sort, dir, from, to, amountMin, amountMax } = parseListParams(req, {
       sortable: Object.keys(SORT),
       defaultSort: "date",
     });
+    const employeeFilter = req.nextUrl.searchParams.get("employee") || undefined;
+    const accountFilter = req.nextUrl.searchParams.get("account") || undefined;
     const conditions = [
       search ? ilike(salary.employee, `%${search}%`) : undefined,
       from ? gte(salary.date, from) : undefined,
       to ? lte(salary.date, to) : undefined,
+      amountMin != null ? gte(salary.amount, String(amountMin)) : undefined,
+      amountMax != null ? lte(salary.amount, String(amountMax)) : undefined,
+      employeeFilter ? eq(salary.employee, employeeFilter) : undefined,
+      accountFilter ? eq(salary.account, accountFilter) : undefined,
     ].filter((c) => c !== undefined);
     const where = conditions.length ? and(...conditions) : undefined;
     const col = SORT[sort as keyof typeof SORT];

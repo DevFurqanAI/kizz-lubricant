@@ -3,6 +3,7 @@
 
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { api, fetchAllRows } from "@/lib/api";
 import { formatMoney, toNum, fmtDate } from "@/lib/utils";
 import { createLocalCache } from "@/lib/localCache";
@@ -13,18 +14,22 @@ import { Pagination } from "@/components/pagination";
 import { EmptyState, ErrorState } from "@/components/states";
 import { SearchInput } from "@/components/search-input";
 import { DateRangeFilter } from "@/components/date-range-filter";
-import { resolveDateRange, type DateRangeSelection } from "@/lib/date-range";
+import { AmountRangeFilter } from "@/components/amount-range-filter";
+import { FilterBar } from "@/components/filter-bar";
+import { resolveDateRange, encodeDateRange, decodeDateRange, type DateRangeSelection } from "@/lib/date-range";
+import { buildQueryString } from "@/lib/url-filter-sync";
 import { Wallet, ArrowDownWideNarrow, ArrowUpNarrowWide, FileSpreadsheet } from "lucide-react";
 import { validateSalary, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 type Row = { id: number; date: string; employee: string; amount: string; account: string };
 type SalaryData = { rows: Row[]; total: number; count: number };
 type EditFormT = { date: string; employee: string; amount: string; account: string };
+type Options = { employees: string[]; accounts: string[] };
 
 const PAGE_SIZE = 50;
 const salaryCache = createLocalCache<SalaryData>("salary", { ttlMs: 5 * 60_000 });
-const keyFor = (q: string, d: "asc" | "desc", p: number, from: string | null, to: string | null) =>
-  `${q}|${d}|p${p}|${from ?? ""}|${to ?? ""}`;
+const keyFor = (q: string, d: "asc" | "desc", p: number, from: string | null, to: string | null, amountMin: string, amountMax: string, employee: string, account: string) =>
+  `${q}|${d}|p${p}|${from ?? ""}|${to ?? ""}|${amountMin}|${amountMax}|${employee}|${account}`;
 const VIEW_STYLES = ["table", "cards", "minimal"] as const;
 type ViewStyle = typeof VIEW_STYLES[number];
 const VIEW_LABELS: Record<ViewStyle, string> = { table: "Table", cards: "Cards", minimal: "Minimal" };
@@ -91,7 +96,10 @@ function RowActions({
 }
 
 export default function SalaryPage() {
-  const cached0 = salaryCache.get(keyFor("", "desc", 1, null, null));
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const cached0 = salaryCache.get(keyFor("", "desc", 1, null, null, "", "", "", ""));
   const [rows, setRows] = useState<Row[]>(cached0?.rows ?? []);
   const [total, setTotal] = useState(cached0?.total ?? 0);
   const [count, setCount] = useState(cached0?.count ?? 0);
@@ -101,6 +109,11 @@ export default function SalaryPage() {
   const [error, setError] = useState(false);
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState<DateRangeSelection>({ preset: "all" });
+  const [amountMin, setAmountMin] = useState("");
+  const [amountMax, setAmountMax] = useState("");
+  const [employee, setEmployee] = useState("");
+  const [account, setAccount] = useState("");
+  const [options, setOptions] = useState<Options>({ employees: [], accounts: [] });
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), employee: "", amount: "", account: "" });
@@ -113,14 +126,18 @@ export default function SalaryPage() {
   const toast = useToast();
   const confirm = useConfirm();
 
-  const load = useCallback(async (q: string, p: number, d: "asc" | "desc", from: string | null, to: string | null, opts?: { silent?: boolean }) => {
+  const load = useCallback(async (q: string, p: number, d: "asc" | "desc", from: string | null, to: string | null, amountMin: string, amountMax: string, employee: string, account: string, opts?: { silent?: boolean }) => {
     if (!opts?.silent) { setLoading(true); setError(false); }
     try {
       const qs = new URLSearchParams({ search: q, page: String(p), limit: String(PAGE_SIZE), sort: "date", dir: d });
       if (from) qs.set("from", from);
       if (to) qs.set("to", to);
+      if (amountMin) qs.set("amountMin", amountMin);
+      if (amountMax) qs.set("amountMax", amountMax);
+      if (employee) qs.set("employee", employee);
+      if (account) qs.set("account", account);
       const data = await api.get<SalaryData>(`/salary?${qs}`);
-      salaryCache.set(keyFor(q, d, p, from, to), data);
+      salaryCache.set(keyFor(q, d, p, from, to, amountMin, amountMax, employee, account), data);
       setRows(data.rows); setTotal(data.total); setCount(data.count);
     } catch {
       if (!opts?.silent) setError(true);
@@ -130,29 +147,86 @@ export default function SalaryPage() {
   }, []);
 
   useEffect(() => {
-    const initial = new URLSearchParams(window.location.search).get("search")?.trim() ?? "";
-    const { from, to } = resolveDateRange(dateRange);
-    if (initial) { setSearch(initial); setPage(1); load(initial, 1, "desc", from, to); return; }
-    const cached = salaryCache.get(keyFor("", "desc", 1, from, to));
-    if (cached) { setRows(cached.rows); setTotal(cached.total); setCount(cached.count); setLoading(false); load("", 1, "desc", from, to, { silent: true }); }
-    else load("", 1, "desc", from, to);
+    const initialSearch = searchParams.get("search")?.trim() ?? "";
+    const initialRange = decodeDateRange(searchParams);
+    const initialAmountMin = searchParams.get("amountMin") ?? "";
+    const initialAmountMax = searchParams.get("amountMax") ?? "";
+    const initialEmployee = searchParams.get("employee") ?? "";
+    const initialAccount = searchParams.get("account") ?? "";
+    setSearch(initialSearch);
+    setDateRange(initialRange);
+    setAmountMin(initialAmountMin);
+    setAmountMax(initialAmountMax);
+    setEmployee(initialEmployee);
+    setAccount(initialAccount);
+    const { from, to } = resolveDateRange(initialRange);
+    if (initialSearch || initialRange.preset !== "all" || initialAmountMin || initialAmountMax || initialEmployee || initialAccount) {
+      setPage(1);
+      load(initialSearch, 1, "desc", from, to, initialAmountMin, initialAmountMax, initialEmployee, initialAccount);
+      return;
+    }
+    const cached = salaryCache.get(keyFor("", "desc", 1, from, to, "", "", "", ""));
+    if (cached) { setRows(cached.rows); setTotal(cached.total); setCount(cached.count); setLoading(false); load("", 1, "desc", from, to, "", "", "", "", { silent: true }); }
+    else load("", 1, "desc", from, to, "", "", "", "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    api.get<Options>("/salary/employees").then(setOptions).catch(() => {});
+  }, []);
+
+  const syncUrl = (overrides: Partial<{ search: string; dateRange: DateRangeSelection; amountMin: string; amountMax: string; employee: string; account: string; page: number }> = {}) => {
+    const s = overrides.search ?? search;
+    const dr = overrides.dateRange ?? dateRange;
+    const aMin = overrides.amountMin ?? amountMin;
+    const aMax = overrides.amountMax ?? amountMax;
+    const emp = overrides.employee ?? employee;
+    const acc = overrides.account ?? account;
+    const p = overrides.page ?? page;
+    router.replace(`${pathname}?${buildQueryString({ search: s, ...encodeDateRange(dr), amountMin: aMin, amountMax: aMax, employee: emp, account: acc, page: p })}`, { scroll: false });
+  };
+
   const applyView = (q: string, p: number, d: "asc" | "desc") => {
     const { from, to } = resolveDateRange(dateRange);
-    const cached = salaryCache.get(keyFor(q, d, p, from, to));
+    const cached = salaryCache.get(keyFor(q, d, p, from, to, amountMin, amountMax, employee, account));
     if (cached) { setRows(cached.rows); setTotal(cached.total); setCount(cached.count); }
-    load(q, p, d, from, to);
+    load(q, p, d, from, to, amountMin, amountMax, employee, account);
   };
 
   const handleSearch = (v: string) => {
     setSearch(v); setPage(1);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => applyView(v, 1, dir), 300);
+    debounceRef.current = setTimeout(() => { applyView(v, 1, dir); syncUrl({ search: v, page: 1 }); }, 300);
   };
   const toggleSort = () => { const d = dir === "desc" ? "asc" : "desc"; setDir(d); setPage(1); applyView(search, 1, d); };
-  const goPage = (p: number) => { setPage(p); applyView(search, p, dir); };
+  const goPage = (p: number) => { setPage(p); applyView(search, p, dir); syncUrl({ page: p }); };
+
+  const handleDateRangeChange = (v: DateRangeSelection) => {
+    setDateRange(v); setPage(1);
+    const { from, to } = resolveDateRange(v);
+    const cached = salaryCache.get(keyFor(search, dir, 1, from, to, amountMin, amountMax, employee, account));
+    if (cached) { setRows(cached.rows); setTotal(cached.total); setCount(cached.count); }
+    load(search, 1, dir, from, to, amountMin, amountMax, employee, account);
+    syncUrl({ dateRange: v, page: 1 });
+  };
+
+  const handleFilterChange = (next: Partial<{ amountMin: string; amountMax: string; employee: string; account: string }>) => {
+    const nextMin = next.amountMin ?? amountMin;
+    const nextMax = next.amountMax ?? amountMax;
+    const nextEmp = next.employee ?? employee;
+    const nextAcc = next.account ?? account;
+    setAmountMin(nextMin); setAmountMax(nextMax); setEmployee(nextEmp); setAccount(nextAcc);
+    setPage(1);
+    const { from, to } = resolveDateRange(dateRange);
+    load(search, 1, dir, from, to, nextMin, nextMax, nextEmp, nextAcc);
+    syncUrl({ amountMin: nextMin, amountMax: nextMax, employee: nextEmp, account: nextAcc, page: 1 });
+  };
+
+  const clearFilters = () => {
+    setDateRange({ preset: "all" }); setAmountMin(""); setAmountMax(""); setEmployee(""); setAccount(""); setPage(1);
+    load(search, 1, dir, null, null, "", "", "", "");
+    syncUrl({ dateRange: { preset: "all" }, amountMin: "", amountMax: "", employee: "", account: "", page: 1 });
+  };
 
   const handleSave = async () => {
     const errs = validateSalary(form);
@@ -166,7 +240,7 @@ export default function SalaryPage() {
       salaryCache.clear();
       setPage(1);
       const { from, to } = resolveDateRange(dateRange);
-      load(search, 1, dir, from, to);
+      load(search, 1, dir, from, to, amountMin, amountMax, employee, account);
       toast.success("Payment added");
     } catch { toast.error("Couldn't add payment"); }
     finally { setSaving(false); }
@@ -179,7 +253,7 @@ export default function SalaryPage() {
     setRows(r => r.filter(row => row.id !== id));
     if (del) setTotal(t => t - toNum(del.amount));
     setCount(c => Math.max(0, c - 1));
-    try { await api.del(`/salary/${id}`); salaryCache.clear(); const { from, to } = resolveDateRange(dateRange); load(search, page, dir, from, to, { silent: true }); toast.success("Payment deleted"); }
+    try { await api.del(`/salary/${id}`); salaryCache.clear(); const { from, to } = resolveDateRange(dateRange); load(search, page, dir, from, to, amountMin, amountMax, employee, account, { silent: true }); toast.success("Payment deleted"); }
     catch { setRows(prevRows); setTotal(prevTotal); setCount(prevCount); toast.error("Couldn't delete payment"); }
   };
 
@@ -190,7 +264,7 @@ export default function SalaryPage() {
     const prevRows = rows;
     setRows(rs => rs.map(r => r.id === id ? { ...r, ...editForm } : r));
     setEditId(null);
-    try { await api.patch(`/salary/${id}`, { ...editForm, amount: Number(editForm.amount) }); salaryCache.clear(); const { from, to } = resolveDateRange(dateRange); load(search, page, dir, from, to, { silent: true }); toast.success("Payment updated"); }
+    try { await api.patch(`/salary/${id}`, { ...editForm, amount: Number(editForm.amount) }); salaryCache.clear(); const { from, to } = resolveDateRange(dateRange); load(search, page, dir, from, to, amountMin, amountMax, employee, account, { silent: true }); toast.success("Payment updated"); }
     catch { setRows(prevRows); toast.error("Couldn't update payment"); }
   };
 
@@ -203,6 +277,10 @@ export default function SalaryPage() {
       const params: Record<string, string> = { search, sort: "date", dir };
       if (from) params.from = from;
       if (to) params.to = to;
+      if (amountMin) params.amountMin = amountMin;
+      if (amountMax) params.amountMax = amountMax;
+      if (employee) params.employee = employee;
+      if (account) params.account = account;
       const all = await fetchAllRows<Row>("/salary", params);
       const { buildSalaryXlsx } = await import("@/lib/reports-xlsx");
       const blob = await buildSalaryXlsx(all, search ? `Filtered: "${search}"` : undefined);
@@ -212,14 +290,6 @@ export default function SalaryPage() {
     } finally {
       setExporting(false);
     }
-  };
-
-  const handleDateRangeChange = (v: DateRangeSelection) => {
-    setDateRange(v); setPage(1);
-    const { from, to } = resolveDateRange(v);
-    const cached = salaryCache.get(keyFor(search, dir, 1, from, to));
-    if (cached) { setRows(cached.rows); setTotal(cached.total); setCount(cached.count); }
-    load(search, 1, dir, from, to);
   };
 
   return (
@@ -268,8 +338,31 @@ export default function SalaryPage() {
       {/* ── Controls: search, sort, style toggle ───────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3 flex-wrap sm:flex-1 sm:min-w-0">
-          <SearchInput value={search} onChange={handleSearch} placeholder="Search by employee…" className="w-full sm:flex-1 sm:min-w-[200px] sm:max-w-sm" />
-          <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
+          <FilterBar active={!!(search || dateRange.preset !== "all" || amountMin || amountMax || employee || account)} onClear={clearFilters}>
+            <SearchInput value={search} onChange={handleSearch} placeholder="Search by employee…" className="w-full sm:flex-1 sm:min-w-[200px] sm:max-w-sm" />
+            <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
+            <AmountRangeFilter min={amountMin} max={amountMax} onChange={(min, max) => handleFilterChange({ amountMin: min, amountMax: max })} />
+            <select
+              value={employee}
+              onChange={(e) => handleFilterChange({ employee: e.target.value })}
+              className="select !w-auto !py-1.5 !text-[12.5px]"
+            >
+              <option value="">All employees</option>
+              {options.employees.map((e) => (
+                <option key={e} value={e}>{e}</option>
+              ))}
+            </select>
+            <select
+              value={account}
+              onChange={(e) => handleFilterChange({ account: e.target.value })}
+              className="select !w-auto !py-1.5 !text-[12.5px]"
+            >
+              <option value="">All accounts</option>
+              {options.accounts.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+          </FilterBar>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={toggleSort} className="btn-secondary btn-sm">
@@ -289,7 +382,7 @@ export default function SalaryPage() {
       {loading ? (
         <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-14 bg-black/[0.04] rounded-2xl animate-pulse" />)}</div>
       ) : error ? (
-        <div className="card"><ErrorState onRetry={() => { const { from, to } = resolveDateRange(dateRange); load(search, page, dir, from, to); }} /></div>
+        <div className="card"><ErrorState onRetry={() => { const { from, to } = resolveDateRange(dateRange); load(search, page, dir, from, to, amountMin, amountMax, employee, account); }} /></div>
       ) : rows.length === 0 ? (
         <div className="card">
           <EmptyState icon={Wallet} title={search ? "No matches" : "No salary records yet"} description={search ? `Nothing matches “${search}”.` : "Record your first salary payment with the “Add Payment” button."} />
