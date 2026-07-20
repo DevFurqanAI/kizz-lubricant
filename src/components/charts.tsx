@@ -267,7 +267,9 @@ export function SalesCostBars({ data, height = 220 }: { data: SalesCostPoint[]; 
 }
 
 // ── Monthly profit / loss — diverging bars anchored to a zero baseline ──
-export function ProfitBars({ data, height = 220 }: { data: ChartPoint[]; height?: number }) {
+export type ProfitPoint = ChartPoint & { margin?: number };
+
+export function ProfitBars({ data, height = 220 }: { data: ProfitPoint[]; height?: number }) {
   const [ref, W] = useMeasure();
   const mounted = useMounted();
   const [hover, setHover] = useState<number | null>(null);
@@ -314,6 +316,14 @@ export function ProfitBars({ data, height = 220 }: { data: ChartPoint[]; height?
           <clipPath id="barsReveal">
             <rect x="0" y="0" width={mounted ? W : 0} height={height} style={{ transition: "width 0.7s cubic-bezier(0.22,1,0.36,1)" }} />
           </clipPath>
+          <linearGradient id="profitGainGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={SUCCESS} stopOpacity="0.75" />
+            <stop offset="100%" stopColor={SUCCESS} stopOpacity="1" />
+          </linearGradient>
+          <linearGradient id="profitLossGrad" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0%" stopColor={DANGER} stopOpacity="0.75" />
+            <stop offset="100%" stopColor={DANGER} stopOpacity="1" />
+          </linearGradient>
         </defs>
 
         {ticks.map((t, i) => (
@@ -346,7 +356,7 @@ export function ProfitBars({ data, height = 220 }: { data: ChartPoint[]; height?
                 width={barW}
                 height={h}
                 rx={3}
-                fill={positive ? SUCCESS : DANGER}
+                fill={positive ? "url(#profitGainGrad)" : "url(#profitLossGrad)"}
                 opacity={hover === null || hover === i ? 1 : 0.45}
                 style={{ transition: "opacity 0.15s" }}
               />
@@ -365,6 +375,9 @@ export function ProfitBars({ data, height = 220 }: { data: ChartPoint[]; height?
             {hv.value >= 0 ? "Profit " : "Loss "}
             {formatMoney(Math.abs(hv.value))}
           </p>
+          {hv.margin != null && (
+            <p className="mt-0.5 text-[11px] text-muted">{hv.margin.toFixed(1)}% margin</p>
+          )}
         </div>
       )}
     </div>
