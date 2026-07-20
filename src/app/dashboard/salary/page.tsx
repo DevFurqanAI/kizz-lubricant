@@ -18,7 +18,7 @@ import { AmountRangeFilter } from "@/components/amount-range-filter";
 import { FilterBar } from "@/components/filter-bar";
 import { resolveDateRange, encodeDateRange, decodeDateRange, type DateRangeSelection } from "@/lib/date-range";
 import { buildQueryString } from "@/lib/url-filter-sync";
-import { Wallet, ArrowDownWideNarrow, ArrowUpNarrowWide, FileSpreadsheet } from "lucide-react";
+import { Wallet, ArrowDownWideNarrow, ArrowUpNarrowWide, FileSpreadsheet, Pencil, Trash2, Check, X } from "lucide-react";
 import { validateSalary, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 type Row = { id: number; date: string; employee: string; amount: string; account: string };
@@ -88,9 +88,13 @@ function RowActions({
   handleDelete: (id: number) => void;
 }) {
   return (
-    <div className="flex items-center gap-4">
-      <button onClick={() => startEdit(r)} className="text-muted/50 hover:text-accent transition-colors">✎</button>
-      <button onClick={() => handleDelete(r.id)} className="text-muted/50 hover:text-danger transition-colors text-lg leading-none">×</button>
+    <div className="flex items-center gap-1">
+      <button onClick={() => startEdit(r)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-accent hover:bg-accent-tint transition-colors" aria-label="Edit payment">
+        <Pencil className="w-4 h-4" strokeWidth={2} />
+      </button>
+      <button onClick={() => handleDelete(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-danger hover:bg-danger-tint transition-colors" aria-label="Delete payment">
+        <Trash2 className="w-4 h-4" strokeWidth={2} />
+      </button>
     </div>
   );
 }
@@ -336,35 +340,8 @@ export default function SalaryPage() {
         </div>
       )}
 
-      {/* ── Controls: search, sort, style toggle ───────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-3 flex-wrap sm:flex-1 sm:min-w-0">
-          <FilterBar active={!!(search || dateRange.preset !== "all" || amountMin || amountMax || employee || account)} onClear={clearFilters}>
-            <SearchInput value={search} onChange={handleSearch} placeholder="Search by employee…" className="w-full sm:flex-1 sm:min-w-[200px] sm:max-w-sm" />
-            <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
-            <AmountRangeFilter min={amountMin} max={amountMax} onChange={(min, max) => handleFilterChange({ amountMin: min, amountMax: max })} />
-            <select
-              value={employee}
-              onChange={(e) => handleFilterChange({ employee: e.target.value })}
-              className="select !w-auto !py-1.5 !text-[12.5px]"
-            >
-              <option value="">All employees</option>
-              {options.employees.map((e) => (
-                <option key={e} value={e}>{e}</option>
-              ))}
-            </select>
-            <select
-              value={account}
-              onChange={(e) => handleFilterChange({ account: e.target.value })}
-              className="select !w-auto !py-1.5 !text-[12.5px]"
-            >
-              <option value="">All accounts</option>
-              {options.accounts.map((a) => (
-                <option key={a} value={a}>{a}</option>
-              ))}
-            </select>
-          </FilterBar>
-        </div>
+      {/* ── Controls: sort, style toggle ─────────────────────── */}
+      <div className="flex items-center justify-end gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={toggleSort} className="btn-secondary btn-sm">
             {dir === "desc" ? <ArrowDownWideNarrow className="w-4 h-4" strokeWidth={2} /> : <ArrowUpNarrowWide className="w-4 h-4" strokeWidth={2} />}
@@ -378,6 +355,34 @@ export default function SalaryPage() {
           </button>
         </div>
       </div>
+
+      {/* Filters live on their own full-width row, never sharing space with the
+          sort/style toggles above — selecting a filter option only ever reflows this row. */}
+      <FilterBar active={!!(search || dateRange.preset !== "all" || amountMin || amountMax || employee || account)} onClear={clearFilters}>
+        <SearchInput value={search} onChange={handleSearch} placeholder="Search by employee…" className="w-full sm:flex-1 sm:min-w-[200px] sm:max-w-sm" />
+        <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
+        <AmountRangeFilter min={amountMin} max={amountMax} onChange={(min, max) => handleFilterChange({ amountMin: min, amountMax: max })} />
+        <select
+          value={employee}
+          onChange={(e) => handleFilterChange({ employee: e.target.value })}
+          className="select !w-auto !py-1.5 !text-[12.5px]"
+        >
+          <option value="">All employees</option>
+          {options.employees.map((e) => (
+            <option key={e} value={e}>{e}</option>
+          ))}
+        </select>
+        <select
+          value={account}
+          onChange={(e) => handleFilterChange({ account: e.target.value })}
+          className="select !w-auto !py-1.5 !text-[12.5px]"
+        >
+          <option value="">All accounts</option>
+          {options.accounts.map((a) => (
+            <option key={a} value={a}>{a}</option>
+          ))}
+        </select>
+      </FilterBar>
 
       {/* ── Entries: 3 swappable styles ─────────────────────── */}
       {loading ? (
@@ -402,7 +407,16 @@ export default function SalaryPage() {
                         <EditRowInputs editForm={editForm} setEditForm={setEditForm} />
                       </div>
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap"><div className="flex items-center gap-4"><button onClick={() => saveEdit(r.id)} className="text-success font-semibold">✓</button><button onClick={() => setEditId(null)} className="text-muted">×</button></div></td>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => saveEdit(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-success hover:bg-success-tint" aria-label="Save">
+                          <Check className="w-4 h-4" strokeWidth={2.5} />
+                        </button>
+                        <button onClick={() => setEditId(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:bg-black/5" aria-label="Cancel">
+                          <X className="w-4 h-4" strokeWidth={2.5} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ) : (
                   <tr key={r.id} className="hover:bg-black/[0.015] transition-colors">
@@ -421,11 +435,18 @@ export default function SalaryPage() {
       ) : viewStyle === "cards" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {rows.map(r => editId === r.id ? (
-            <div key={r.id} className="card p-4 space-y-2 ring-1 ring-accent/30">
+            <div key={r.id} className="card p-4 space-y-2 bg-accent-tint/40">
               <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
                 <EditRowInputs editForm={editForm} setEditForm={setEditForm} />
               </div>
-              <div className="flex gap-4 pt-1"><button onClick={() => saveEdit(r.id)} className="text-success font-semibold text-sm">✓ Save</button><button onClick={() => setEditId(null)} className="text-muted text-sm">Cancel</button></div>
+              <div className="flex items-center gap-1 justify-end pt-1">
+                <button onClick={() => saveEdit(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-success hover:bg-success-tint" aria-label="Save">
+                  <Check className="w-4 h-4" strokeWidth={2.5} />
+                </button>
+                <button onClick={() => setEditId(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:bg-black/5" aria-label="Cancel">
+                  <X className="w-4 h-4" strokeWidth={2.5} />
+                </button>
+              </div>
             </div>
           ) : (
             <div key={r.id} className="card p-4 flex items-center gap-3 sm:gap-4">
@@ -443,9 +464,16 @@ export default function SalaryPage() {
       ) : (
         <div className="card divide-y divide-line">
           {rows.map(r => editId === r.id ? (
-            <div key={r.id} className="px-4 py-3 bg-accent-tint/50 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
+            <div key={r.id} className="px-4 py-3 bg-accent-tint/40 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
               <EditRowInputs editForm={editForm} setEditForm={setEditForm} dense />
-              <div className="flex gap-4 sm:ml-auto"><button onClick={() => saveEdit(r.id)} className="text-success font-semibold">✓</button><button onClick={() => setEditId(null)} className="text-muted">×</button></div>
+              <div className="flex gap-1 sm:ml-auto">
+                <button onClick={() => saveEdit(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-success hover:bg-success-tint" aria-label="Save">
+                  <Check className="w-4 h-4" strokeWidth={2.5} />
+                </button>
+                <button onClick={() => setEditId(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:bg-black/5" aria-label="Cancel">
+                  <X className="w-4 h-4" strokeWidth={2.5} />
+                </button>
+              </div>
             </div>
           ) : (
             <div key={r.id} className="px-4 py-3 flex items-center gap-3 hover:bg-black/[0.015] transition-colors">

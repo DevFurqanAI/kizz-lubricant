@@ -18,7 +18,7 @@ import { AmountRangeFilter } from "@/components/amount-range-filter";
 import { FilterBar } from "@/components/filter-bar";
 import { resolveDateRange, encodeDateRange, decodeDateRange, type DateRangeSelection } from "@/lib/date-range";
 import { buildQueryString } from "@/lib/url-filter-sync";
-import { TrendingDown, FileSpreadsheet } from "lucide-react";
+import { TrendingDown, FileSpreadsheet, Pencil, Trash2, Check, X } from "lucide-react";
 import { validateAmountEntry, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 type Row = { id: number; date: string; detail: string; amount: string };
@@ -273,19 +273,20 @@ export default function PurchasingPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3 flex-wrap">
-          <FilterBar active={!!(search || dateRange.preset !== "all" || amountMin || amountMax)} onClear={clearFilters}>
-            <SearchInput value={search} onChange={handleSearch} placeholder="Search purchases…" className="w-full max-w-xs" />
-            <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
-            <AmountRangeFilter min={amountMin} max={amountMax} onChange={(min, max) => handleFilterChange({ amountMin: min, amountMax: max })} />
-          </FilterBar>
-        </div>
+      <div className="flex items-center justify-end gap-4">
         <div className="text-right flex-shrink-0">
           <p className="text-[11px] text-muted uppercase tracking-wider">Total</p>
           <p className="font-mono font-semibold text-ink tabular-nums">{formatMoney(total)}</p>
         </div>
       </div>
+
+      {/* Filters live on their own full-width row, never sharing space with the
+          Total block above — selecting a filter option only ever reflows this row. */}
+      <FilterBar active={!!(search || dateRange.preset !== "all" || amountMin || amountMax)} onClear={clearFilters}>
+        <SearchInput value={search} onChange={handleSearch} placeholder="Search purchases…" className="w-full max-w-xs" />
+        <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
+        <AmountRangeFilter min={amountMin} max={amountMax} onChange={(min, max) => handleFilterChange({ amountMin: min, amountMax: max })} />
+      </FilterBar>
 
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
@@ -304,19 +305,21 @@ export default function PurchasingPage() {
                rows.length === 0 ? <tr><td colSpan={4}><EmptyState icon={TrendingDown} compact title={search ? "No matches" : "No entries yet"} description={search ? `Nothing matches “${search}”.` : "Record your first purchase with the “Add Purchasing” button."} /></td></tr> :
                rows.map(r => editId === r.id ? (
                 <tr key={r.id} className="bg-accent-tint/40">
-                  <td className="px-4 py-2">
-                    <input type="date" value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} className="input px-2 py-1.5 text-xs" />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input value={editForm.detail} onChange={e => setEditForm(f => ({ ...f, detail: e.target.value }))} className="input px-2 py-1.5 text-sm" />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input type="number" value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))} className="input px-2 py-1.5 text-sm text-right font-mono" />
+                  <td className="px-4 py-2.5" colSpan={3}>
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+                      <input type="date" value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} className="input px-2.5 py-1.5 text-xs w-full sm:w-36" />
+                      <input value={editForm.detail} onChange={e => setEditForm(f => ({ ...f, detail: e.target.value }))} placeholder="Detail" className="input px-2.5 py-1.5 text-sm w-full sm:flex-1 sm:min-w-[140px]" />
+                      <input type="number" value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))} placeholder="Amount" className="input px-2.5 py-1.5 text-sm w-full sm:w-28 text-right font-mono" />
+                    </div>
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap">
-                    <div className="flex items-center gap-4">
-                      <button onClick={() => saveEdit(r.id)} className="text-success font-semibold">✓</button>
-                      <button onClick={() => setEditId(null)} className="text-muted">×</button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => saveEdit(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-success hover:bg-success-tint" aria-label="Save">
+                        <Check className="w-4 h-4" strokeWidth={2.5} />
+                      </button>
+                      <button onClick={() => setEditId(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:bg-black/5" aria-label="Cancel">
+                        <X className="w-4 h-4" strokeWidth={2.5} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -326,9 +329,13 @@ export default function PurchasingPage() {
                   <td className="px-4 py-3 text-ink">{r.detail}</td>
                   <td className="px-4 py-3 text-right font-mono font-semibold text-ink tabular-nums">{formatMoney(r.amount)}</td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="flex items-center gap-4">
-                      <button onClick={() => startEdit(r)} className="text-muted/50 hover:text-accent transition-colors">✎</button>
-                      <button onClick={() => handleDelete(r.id)} className="text-muted/50 hover:text-danger transition-colors text-lg leading-none">×</button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => startEdit(r)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-accent hover:bg-accent-tint transition-colors" aria-label="Edit entry">
+                        <Pencil className="w-4 h-4" strokeWidth={2} />
+                      </button>
+                      <button onClick={() => handleDelete(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-danger hover:bg-danger-tint transition-colors" aria-label="Delete entry">
+                        <Trash2 className="w-4 h-4" strokeWidth={2} />
+                      </button>
                     </div>
                   </td>
                 </tr>

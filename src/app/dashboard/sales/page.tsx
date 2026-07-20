@@ -18,7 +18,7 @@ import { AmountRangeFilter } from "@/components/amount-range-filter";
 import { FilterBar } from "@/components/filter-bar";
 import { resolveDateRange, encodeDateRange, decodeDateRange, type DateRangeSelection } from "@/lib/date-range";
 import { buildQueryString } from "@/lib/url-filter-sync";
-import { TrendingUp, FileSpreadsheet } from "lucide-react";
+import { TrendingUp, FileSpreadsheet, Pencil, Trash2, Check, X } from "lucide-react";
 import { validateSale, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 type SaleRow = {
@@ -458,29 +458,10 @@ export default function SalesPage() {
       )}
 
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* View toggle: paginated entries vs per-month roll-up (the sheet's blocks) */}
-          <div className="inline-flex rounded-lg border border-line-strong overflow-hidden text-[13px]">
-            <button onClick={() => switchView("list")} className={`px-3 py-1.5 font-medium transition-colors ${view === "list" ? "bg-surface text-ink" : "text-muted hover:text-ink"}`}>Entries</button>
-            <button onClick={() => switchView("month")} className={`px-3 py-1.5 font-medium transition-colors border-l border-line-strong ${view === "month" ? "bg-surface text-ink" : "text-muted hover:text-ink"}`}>By month</button>
-          </div>
-          {view === "list" && (
-            <FilterBar active={!!(search || dateRange.preset !== "all" || amountMin || amountMax || customerId)} onClear={clearFilters}>
-              <SearchInput value={search} onChange={handleSearch} placeholder="Search sales…" className="w-full max-w-xs" />
-              <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
-              <AmountRangeFilter min={amountMin} max={amountMax} onChange={(min, max) => handleFilterChange({ amountMin: min, amountMax: max })} />
-              <select
-                value={customerId}
-                onChange={(e) => handleFilterChange({ customerId: e.target.value })}
-                className="select py-1.5 text-[12.5px] max-w-[160px]"
-              >
-                <option value="">All customers</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </FilterBar>
-          )}
+        {/* View toggle: paginated entries vs per-month roll-up (the sheet's blocks) */}
+        <div className="inline-flex rounded-lg border border-line-strong overflow-hidden text-[13px]">
+          <button onClick={() => switchView("list")} className={`px-3 py-1.5 font-medium transition-colors ${view === "list" ? "bg-surface text-ink" : "text-muted hover:text-ink"}`}>Entries</button>
+          <button onClick={() => switchView("month")} className={`px-3 py-1.5 font-medium transition-colors border-l border-line-strong ${view === "month" ? "bg-surface text-ink" : "text-muted hover:text-ink"}`}>By month</button>
         </div>
         <div className="text-right flex-shrink-0">
           <p className="text-[11px] text-muted uppercase tracking-wider">Total</p>
@@ -492,6 +473,26 @@ export default function SalesPage() {
           )}
         </div>
       </div>
+
+      {/* Filters live on their own full-width row, never sharing space with the
+          Total block above — selecting a filter option only ever reflows this row. */}
+      {view === "list" && (
+        <FilterBar active={!!(search || dateRange.preset !== "all" || amountMin || amountMax || customerId)} onClear={clearFilters}>
+          <SearchInput value={search} onChange={handleSearch} placeholder="Search sales…" className="w-full max-w-xs" />
+          <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
+          <AmountRangeFilter min={amountMin} max={amountMax} onChange={(min, max) => handleFilterChange({ amountMin: min, amountMax: max })} />
+          <select
+            value={customerId}
+            onChange={(e) => handleFilterChange({ customerId: e.target.value })}
+            className="select py-1.5 text-[12.5px] max-w-[160px]"
+          >
+            <option value="">All customers</option>
+            {customers.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </FilterBar>
+      )}
 
       {view === "list" && (
       <div className="card overflow-hidden">
@@ -520,41 +521,33 @@ export default function SalesPage() {
                 <tr><td colSpan={10}><EmptyState icon={TrendingUp} compact title={search ? "No matches" : "No sales yet"} description={search ? `Nothing matches “${search}”.` : "Record your first sale with the “Add Sale” button."} /></td></tr>
               ) : rows.map(r => editId === r.id ? (
                 <tr key={r.id} className="bg-accent-tint/40">
-                  <td className="px-4 py-2">
-                    <input type="date" value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} className="input px-2 py-1.5 text-xs" />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input value={editForm.detail} onChange={e => setEditForm(f => ({ ...f, detail: e.target.value }))} className="input px-2 py-1.5 text-sm" />
-                  </td>
-                  <td className="px-4 py-2 text-muted text-xs whitespace-nowrap">{r.customerName ?? "Cash"}</td>
-                  <td className="px-4 py-2">
-                    <input value={editForm.packing} onChange={e => setEditForm(f => ({ ...f, packing: e.target.value }))} className="input px-2 py-1.5 text-xs" />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input value={editForm.unit} onChange={e => setEditForm(f => ({ ...f, unit: e.target.value }))} className="input px-2 py-1.5 text-xs" />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input type="number" value={editForm.qty} onChange={e => setEditForm(f => ({ ...f, qty: e.target.value }))} onBlur={handleEditAutoAmount} className="input px-2 py-1.5 text-xs" />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input type="number" value={editForm.rate} onChange={e => setEditForm(f => ({ ...f, rate: e.target.value }))} onBlur={handleEditAutoAmount} className="input px-2 py-1.5 text-xs text-right font-mono" />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input type="number" value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))} title="Auto-fills from Qty × Rate — you can override it" className="input px-2 py-1.5 text-sm text-right font-mono" />
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="flex gap-1">
-                      <input type="number" value={editForm.saleKg} onChange={e => setEditForm(f => ({ ...f, saleKg: e.target.value }))} className="input px-2 py-1.5 text-xs text-right font-mono w-full min-w-0" placeholder="0" />
-                      <select value={editForm.saleKgUnit} onChange={e => setEditForm(f => ({ ...f, saleKgUnit: e.target.value }))} className="select px-1 py-1.5 text-xs w-[46px] flex-shrink-0">
-                        <option value="Kg">Kg</option>
-                        <option value="L">L</option>
-                      </select>
+                  <td className="px-4 py-2.5" colSpan={9}>
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+                      <input type="date" value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} className="input px-2.5 py-1.5 text-xs w-full sm:w-36" />
+                      <input value={editForm.detail} onChange={e => setEditForm(f => ({ ...f, detail: e.target.value }))} placeholder="Detail" className="input px-2.5 py-1.5 text-sm w-full sm:flex-1 sm:min-w-[140px]" />
+                      <span className="input px-2.5 py-1.5 text-xs w-full sm:w-auto bg-black/[0.03] text-muted flex items-center whitespace-nowrap">{r.customerName ?? "Cash"}</span>
+                      <input value={editForm.packing} onChange={e => setEditForm(f => ({ ...f, packing: e.target.value }))} placeholder="Packing" className="input px-2.5 py-1.5 text-xs w-full sm:w-24" />
+                      <input value={editForm.unit} onChange={e => setEditForm(f => ({ ...f, unit: e.target.value }))} placeholder="Unit" className="input px-2.5 py-1.5 text-xs w-full sm:w-20" />
+                      <input type="number" value={editForm.qty} onChange={e => setEditForm(f => ({ ...f, qty: e.target.value }))} onBlur={handleEditAutoAmount} placeholder="Qty" className="input px-2.5 py-1.5 text-xs w-full sm:w-20" />
+                      <input type="number" value={editForm.rate} onChange={e => setEditForm(f => ({ ...f, rate: e.target.value }))} onBlur={handleEditAutoAmount} placeholder="Rate" className="input px-2.5 py-1.5 text-xs w-full sm:w-24 text-right font-mono" />
+                      <input type="number" value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))} title="Auto-fills from Qty × Rate — you can override it" placeholder="Amount" className="input px-2.5 py-1.5 text-sm w-full sm:w-28 text-right font-mono" />
+                      <div className="flex gap-1 w-full sm:w-auto">
+                        <input type="number" value={editForm.saleKg} onChange={e => setEditForm(f => ({ ...f, saleKg: e.target.value }))} className="input px-2.5 py-1.5 text-xs text-right font-mono w-full sm:w-20" placeholder="Sale Kg" />
+                        <select value={editForm.saleKgUnit} onChange={e => setEditForm(f => ({ ...f, saleKgUnit: e.target.value }))} className="select px-1 py-1.5 text-xs w-[54px] flex-shrink-0">
+                          <option value="Kg">Kg</option>
+                          <option value="L">L</option>
+                        </select>
+                      </div>
                     </div>
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap">
-                    <div className="flex items-center gap-4">
-                      <button onClick={() => saveEdit(r.id)} className="text-success font-semibold">✓</button>
-                      <button onClick={() => setEditId(null)} className="text-muted">×</button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => saveEdit(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-success hover:bg-success-tint" aria-label="Save">
+                        <Check className="w-4 h-4" strokeWidth={2.5} />
+                      </button>
+                      <button onClick={() => setEditId(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:bg-black/5" aria-label="Cancel">
+                        <X className="w-4 h-4" strokeWidth={2.5} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -578,9 +571,13 @@ export default function SalesPage() {
                   <td className="px-4 py-3 text-right font-mono font-semibold text-ink tabular-nums">{formatMoney(r.amount)}</td>
                   <td className="px-4 py-3 text-right font-mono text-muted text-xs tabular-nums whitespace-nowrap">{r.saleKg ? `${Number(r.saleKg).toLocaleString()} ${r.saleKgUnit ?? "Kg"}` : "—"}</td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="flex items-center gap-4">
-                      <button onClick={() => startEdit(r)} className="text-muted/50 hover:text-accent transition-colors">✎</button>
-                      <button onClick={() => handleDelete(r.id)} className="text-muted/50 hover:text-danger transition-colors text-lg leading-none">×</button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => startEdit(r)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-accent hover:bg-accent-tint transition-colors" aria-label="Edit sale">
+                        <Pencil className="w-4 h-4" strokeWidth={2} />
+                      </button>
+                      <button onClick={() => handleDelete(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-danger hover:bg-danger-tint transition-colors" aria-label="Delete sale">
+                        <Trash2 className="w-4 h-4" strokeWidth={2} />
+                      </button>
                     </div>
                   </td>
                 </tr>

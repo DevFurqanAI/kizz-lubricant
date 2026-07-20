@@ -138,8 +138,22 @@ export default function DashboardPage() {
             A snapshot of your whole business everything you&apos;ve sold, spent, and are still owed.
           </p>
         </div>
-        {/* Period toggle — rescopes the sales/cost/profit figures and sparklines below */}
+        {/* Period toggle — rescopes the sales/cost/profit figures and sparklines below.
+            The year picker renders BEFORE the toggle group (not after) so the toggle
+            group — being the right-anchored item in this justify-between row — never
+            shifts position when the picker appears or disappears. */}
         <div className="flex items-center gap-2 flex-wrap">
+          {periodKey === "year" && years.length > 0 && (
+            <select
+              className="select !w-auto !py-1.5 !text-[12.5px] rise"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+            >
+              {years.map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          )}
           <div className="inline-flex items-center rounded-lg border border-line-strong bg-surface p-0.5 shadow-btn">
             {PERIODS_BEFORE_YEAR.map((p) => (
               <button
@@ -180,17 +194,6 @@ export default function DashboardPage() {
               </button>
             ))}
           </div>
-          {periodKey === "year" && years.length > 0 && (
-            <select
-              className="select !w-auto !py-1.5 !text-[12.5px] rise"
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-            >
-              {years.map((y) => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-          )}
         </div>
       </div>
 

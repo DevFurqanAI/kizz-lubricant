@@ -13,7 +13,7 @@ import { Pagination } from "@/components/pagination";
 import { EmptyState, ErrorState, CardGridSkeleton } from "@/components/states";
 import { SearchInput } from "@/components/search-input";
 import { saveOrShareBlob } from "@/lib/file-download";
-import { Users, FileSpreadsheet } from "lucide-react";
+import { Users, FileSpreadsheet, Pencil, Trash2, Check, X } from "lucide-react";
 import { validateCustomer, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 const PAGE_SIZE = 50;
@@ -248,10 +248,11 @@ export default function CustomersPage() {
               { key: "address", label: "Address" },
               { key: "phone", label: "Cell #" },
               { key: "whatsapp", label: "WhatsApp #" },
-            ].map(({ key, label }) => (
+              { key: "email", label: "Email", type: "email" },
+            ].map(({ key, label, type }) => (
               <div key={key}>
                 <label className="label">{label}</label>
-                <input value={(form as Record<string, string>)[key]} onChange={e => { setForm(f => ({ ...f, [key]: e.target.value })); setFormErrors(er => ({ ...er, [key]: "" })); }} className={`input py-2.5 text-sm${formErrors[key] ? " ring-1 ring-danger" : ""}`} />
+                <input type={type ?? "text"} value={(form as Record<string, string>)[key]} onChange={e => { setForm(f => ({ ...f, [key]: e.target.value })); setFormErrors(er => ({ ...er, [key]: "" })); }} className={`input py-2.5 text-sm${formErrors[key] ? " ring-1 ring-danger" : ""}`} />
                 {formErrors[key] && <p className="mt-1 text-xs text-danger">{formErrors[key]}</p>}
               </div>
             ))}
@@ -315,7 +316,16 @@ export default function CustomersPage() {
                           <EditRowInputs editForm={editForm} setEditForm={setEditForm} />
                         </div>
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap"><div className="flex items-center gap-4"><button onClick={(e) => saveEdit(c.id, e)} className="text-success font-semibold">✓</button><button onClick={cancelEdit} className="text-muted">×</button></div></td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          <button onClick={(e) => saveEdit(c.id, e)} className="w-7 h-7 flex items-center justify-center rounded-lg text-success hover:bg-success-tint" aria-label="Save">
+                            <Check className="w-4 h-4" strokeWidth={2.5} />
+                          </button>
+                          <button onClick={cancelEdit} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:bg-black/5" aria-label="Cancel">
+                            <X className="w-4 h-4" strokeWidth={2.5} />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ) : (
                     <tr key={c.id} onClick={() => router.push(`/dashboard/customers/${c.id}`)} className="hover:bg-black/[0.015] transition-colors cursor-pointer">
@@ -326,9 +336,13 @@ export default function CustomersPage() {
                       <td className="px-4 py-3 text-muted text-xs">{c.address || "—"}</td>
                       <td className={`px-4 py-3 text-right font-mono font-semibold tabular-nums ${bal > 0 ? "text-warning" : bal < 0 ? "text-success" : "text-muted"}`}>{formatMoney(bal)}</td>
                       <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-4">
-                          <button onClick={(e) => startEdit(c, e)} className="text-muted/50 hover:text-accent transition-colors" aria-label="Edit customer">✎</button>
-                          <button onClick={(e) => handleDelete(c.id, e)} className="text-muted/50 hover:text-danger transition-colors text-lg leading-none" aria-label="Delete customer">×</button>
+                        <div className="flex items-center gap-1">
+                          <button onClick={(e) => startEdit(c, e)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-accent hover:bg-accent-tint transition-colors" aria-label="Edit customer">
+                            <Pencil className="w-4 h-4" strokeWidth={2} />
+                          </button>
+                          <button onClick={(e) => handleDelete(c.id, e)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-danger hover:bg-danger-tint transition-colors" aria-label="Delete customer">
+                            <Trash2 className="w-4 h-4" strokeWidth={2} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -347,7 +361,7 @@ export default function CustomersPage() {
 
             if (isEditing) {
               return (
-                <div key={c.id} className="card p-5 space-y-2 ring-1 ring-accent/30">
+                <div key={c.id} className="card p-5 space-y-2 bg-accent-tint/40">
                   <input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} placeholder="Name *" className="input px-2.5 py-1.5 text-sm font-semibold" />
                   <input value={editForm.owner} onChange={e => setEditForm(f => ({ ...f, owner: e.target.value }))} placeholder="Owner" className="input px-2.5 py-1.5 text-xs" />
                   <input value={editForm.address} onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))} placeholder="Address" className="input px-2.5 py-1.5 text-xs" />
@@ -355,9 +369,13 @@ export default function CustomersPage() {
                   <input type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} placeholder="Email" className="input px-2.5 py-1.5 text-xs" />
                   <input value={editForm.whatsapp} onChange={e => setEditForm(f => ({ ...f, whatsapp: e.target.value }))} placeholder="WhatsApp #" className="input px-2.5 py-1.5 text-xs" />
                   <input value={editForm.cnic} onChange={e => setEditForm(f => ({ ...f, cnic: e.target.value }))} placeholder="CNIC" className="input px-2.5 py-1.5 text-xs" />
-                  <div className="flex gap-4 pt-1">
-                    <button onClick={(e) => saveEdit(c.id, e)} className="text-success font-semibold text-sm">✓ Save</button>
-                    <button onClick={cancelEdit} className="text-muted text-sm">Cancel</button>
+                  <div className="flex items-center gap-1 justify-end pt-1">
+                    <button onClick={(e) => saveEdit(c.id, e)} className="w-7 h-7 flex items-center justify-center rounded-lg text-success hover:bg-success-tint" aria-label="Save">
+                      <Check className="w-4 h-4" strokeWidth={2.5} />
+                    </button>
+                    <button onClick={cancelEdit} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:bg-black/5" aria-label="Cancel">
+                      <X className="w-4 h-4" strokeWidth={2.5} />
+                    </button>
                   </div>
                 </div>
               );
@@ -381,9 +399,13 @@ export default function CustomersPage() {
                     <p className="text-[10px] uppercase tracking-wider text-muted font-semibold">Balance</p>
                     <p className={`font-mono font-semibold text-base mt-0.5 tabular-nums ${bal > 0 ? "text-warning" : bal < 0 ? "text-success" : "text-muted"}`}>{formatMoney(bal)}</p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <button onClick={(e) => startEdit(c, e)} className="text-muted/50 hover:text-accent transition-colors" aria-label="Edit customer">✎</button>
-                    <button onClick={(e) => handleDelete(c.id, e)} className="text-muted/50 hover:text-danger transition-colors text-lg leading-none" aria-label="Delete customer">×</button>
+                  <div className="flex items-center gap-1">
+                    <button onClick={(e) => startEdit(c, e)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-accent hover:bg-accent-tint transition-colors" aria-label="Edit customer">
+                      <Pencil className="w-4 h-4" strokeWidth={2} />
+                    </button>
+                    <button onClick={(e) => handleDelete(c.id, e)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-danger hover:bg-danger-tint transition-colors" aria-label="Delete customer">
+                      <Trash2 className="w-4 h-4" strokeWidth={2} />
+                    </button>
                   </div>
                 </div>
               </Link>

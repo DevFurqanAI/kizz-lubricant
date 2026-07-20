@@ -380,35 +380,35 @@ export default function ExpensesPage() {
                 : rows.map((r) => {
                   const isEditing = editingId === r.id;
                   return (
-                    <tr key={r.id} className="hover:bg-black/[0.015] transition-colors group">
+                    <tr key={r.id} className={`transition-colors group ${isEditing ? "bg-accent-tint/40" : "hover:bg-black/[0.015]"}`}>
                       {isEditing ? (
                         <>
-                          <td className="px-4 py-2.5">
-                            <input
-                              type="date"
-                              value={editForm.date}
-                              onChange={(e) => setEditForm((f) => ({ ...f, date: e.target.value }))}
-                              className="input px-2 py-1.5 text-xs"
-                            />
+                          <td className="px-4 py-2.5" colSpan={3}>
+                            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+                              <input
+                                type="date"
+                                value={editForm.date}
+                                onChange={(e) => setEditForm((f) => ({ ...f, date: e.target.value }))}
+                                className="input px-2.5 py-1.5 text-xs w-full sm:w-36"
+                              />
+                              <input
+                                type="text"
+                                value={editForm.detail}
+                                onChange={(e) => setEditForm((f) => ({ ...f, detail: e.target.value }))}
+                                placeholder="Detail"
+                                className="input px-2.5 py-1.5 text-sm w-full sm:flex-1 sm:min-w-[140px]"
+                              />
+                              <input
+                                type="number"
+                                value={editForm.amount}
+                                onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
+                                placeholder="Amount"
+                                className="input px-2.5 py-1.5 text-sm w-full sm:w-28 text-right font-mono"
+                              />
+                            </div>
                           </td>
                           <td className="px-4 py-2.5">
-                            <input
-                              type="text"
-                              value={editForm.detail}
-                              onChange={(e) => setEditForm((f) => ({ ...f, detail: e.target.value }))}
-                              className="input px-2 py-1.5 text-sm"
-                            />
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <input
-                              type="number"
-                              value={editForm.amount}
-                              onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
-                              className="input px-2 py-1.5 text-sm text-right font-mono"
-                            />
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex items-center justify-end gap-1">
                               <button
                                 onClick={() => saveEdit(r.id)}
                                 disabled={editSaving}
@@ -494,7 +494,7 @@ export default function ExpensesPage() {
             const isEditing = editingId === r.id;
             if (isEditing) {
               return (
-                <div key={r.id} className="card px-4 py-3.5 space-y-2 ring-1 ring-accent/30">
+                <div key={r.id} className="card px-4 py-3.5 space-y-2 bg-accent-tint/40">
                   <input
                     type="date"
                     value={editForm.date}
@@ -513,16 +513,12 @@ export default function ExpensesPage() {
                     onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
                     className="input px-2.5 py-2 text-sm font-mono"
                   />
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      onClick={() => saveEdit(r.id)}
-                      disabled={editSaving}
-                      className="btn-primary flex-1 py-2 text-xs"
-                    >
-                      {editSaving ? "Saving…" : "Save"}
+                  <div className="flex items-center gap-1 justify-end pt-1">
+                    <button onClick={() => saveEdit(r.id)} disabled={editSaving} className="w-7 h-7 flex items-center justify-center rounded-lg text-success hover:bg-success-tint disabled:opacity-40" aria-label="Save">
+                      <Check className="w-4 h-4" strokeWidth={2.5} />
                     </button>
-                    <button onClick={cancelEdit} className="btn-secondary flex-1 py-2 text-xs">
-                      Cancel
+                    <button onClick={cancelEdit} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:bg-black/5" aria-label="Cancel">
+                      <X className="w-4 h-4" strokeWidth={2.5} />
                     </button>
                   </div>
                 </div>

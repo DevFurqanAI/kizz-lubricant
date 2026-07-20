@@ -7,7 +7,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatMoney, toNum, fmtDate } from "@/lib/utils";
 import type { CustomerEntry } from "@/db/schema";
-import { FileSpreadsheet, MessageCircle, ReceiptText } from "lucide-react";
+import { FileSpreadsheet, MessageCircle, ReceiptText, Pencil, Trash2, Check, X } from "lucide-react";
 import { customerDetailCache as customerCache, type FullCustomer } from "@/lib/customercache";
 import { saveOrShareBlob } from "@/lib/file-download";
 import { useToast } from "@/components/toast";
@@ -16,6 +16,7 @@ import { EmptyState, ErrorState } from "@/components/states";
 import { validateLedgerEntry, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { AmountRangeFilter } from "@/components/amount-range-filter";
+import { FilterBar } from "@/components/filter-bar";
 import { resolveDateRange, describeDateRange, type DateRangeSelection } from "@/lib/date-range";
 
 const VISIBLE_LIMIT = 100; // progressively reveal older rows beyond this
@@ -400,10 +401,13 @@ export default function CustomerLedgerPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
+      <FilterBar
+        active={dateRange.preset !== "all" || !!amountMin || !!amountMax}
+        onClear={() => { setDateRange({ preset: "all" }); setAmountMin(""); setAmountMax(""); }}
+      >
         <DateRangeFilter value={dateRange} onChange={setDateRange} />
         <AmountRangeFilter min={amountMin} max={amountMax} onChange={(min, max) => { setAmountMin(min); setAmountMax(max); }} />
-      </div>
+      </FilterBar>
 
       {showPayForm && (
         <div className="card p-6">
@@ -534,38 +538,28 @@ export default function CustomerLedgerPage() {
                 if (editId === e.id) {
                   return (
                     <tr key={e.id} className="bg-accent-tint/40">
-                      <td className="px-4 py-2">
-                        <input type="date" value={editForm.date} onChange={ev => setEditForm(f => ({ ...f, date: ev.target.value }))} className="input px-2 py-1.5 text-xs" />
-                      </td>
-                      <td className="px-4 py-2">
-                        <input value={editForm.product} onChange={ev => setEditForm(f => ({ ...f, product: ev.target.value }))} className="input px-2 py-1.5 text-sm" />
-                      </td>
-                      <td className="px-4 py-2">
-                        <input value={editForm.packing} onChange={ev => setEditForm(f => ({ ...f, packing: ev.target.value }))} className="input px-2 py-1.5 text-xs" />
-                      </td>
-                      <td className="px-4 py-2">
-                        <input value={editForm.unit} onChange={ev => setEditForm(f => ({ ...f, unit: ev.target.value }))} className="input px-2 py-1.5 text-xs" />
-                      </td>
-                      <td className="px-4 py-2">
-                        <input type="number" value={editForm.qty} onChange={ev => setEditForm(f => ({ ...f, qty: ev.target.value }))} onBlur={handleEditAutoDebit} className="input px-2 py-1.5 text-xs" />
-                      </td>
-                      <td className="px-4 py-2">
-                        <input type="number" value={editForm.rate} onChange={ev => setEditForm(f => ({ ...f, rate: ev.target.value }))} onBlur={handleEditAutoDebit} className="input px-2 py-1.5 text-xs text-right font-mono" />
-                      </td>
-                      <td className="px-4 py-2">
-                        <input type="number" value={editForm.debit} onChange={ev => setEditForm(f => ({ ...f, debit: ev.target.value }))} className="input px-2 py-1.5 text-sm text-right font-mono" />
-                      </td>
-                      <td className="px-4 py-2">
-                        <input type="number" value={editForm.credit} onChange={ev => setEditForm(f => ({ ...f, credit: ev.target.value }))} className="input px-2 py-1.5 text-sm text-right font-mono" />
-                      </td>
-                      <td className="px-4 py-2 text-center text-muted/50 text-xs">auto</td>
-                      <td className="px-4 py-2">
-                        <input value={editForm.account} onChange={ev => setEditForm(f => ({ ...f, account: ev.target.value }))} className="input px-2 py-1.5 text-xs" />
+                      <td className="px-4 py-2.5" colSpan={10}>
+                        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+                          <input type="date" value={editForm.date} onChange={ev => setEditForm(f => ({ ...f, date: ev.target.value }))} className="input px-2.5 py-1.5 text-xs w-full sm:w-36" />
+                          <input value={editForm.product} onChange={ev => setEditForm(f => ({ ...f, product: ev.target.value }))} placeholder="Product" className="input px-2.5 py-1.5 text-sm w-full sm:flex-1 sm:min-w-[120px]" />
+                          <input value={editForm.packing} onChange={ev => setEditForm(f => ({ ...f, packing: ev.target.value }))} placeholder="Packing" className="input px-2.5 py-1.5 text-xs w-full sm:w-24" />
+                          <input value={editForm.unit} onChange={ev => setEditForm(f => ({ ...f, unit: ev.target.value }))} placeholder="Unit" className="input px-2.5 py-1.5 text-xs w-full sm:w-20" />
+                          <input type="number" value={editForm.qty} onChange={ev => setEditForm(f => ({ ...f, qty: ev.target.value }))} onBlur={handleEditAutoDebit} placeholder="Qty" className="input px-2.5 py-1.5 text-xs w-full sm:w-20" />
+                          <input type="number" value={editForm.rate} onChange={ev => setEditForm(f => ({ ...f, rate: ev.target.value }))} onBlur={handleEditAutoDebit} placeholder="Rate" className="input px-2.5 py-1.5 text-xs w-full sm:w-24 text-right font-mono" />
+                          <input type="number" value={editForm.debit} onChange={ev => setEditForm(f => ({ ...f, debit: ev.target.value }))} placeholder="Debit" className="input px-2.5 py-1.5 text-sm w-full sm:w-24 text-right font-mono" />
+                          <input type="number" value={editForm.credit} onChange={ev => setEditForm(f => ({ ...f, credit: ev.target.value }))} placeholder="Credit" className="input px-2.5 py-1.5 text-sm w-full sm:w-24 text-right font-mono" />
+                          <span className="input px-2.5 py-1.5 text-xs w-full sm:w-auto bg-black/[0.03] text-muted flex items-center justify-center whitespace-nowrap">Balance: auto</span>
+                          <input value={editForm.account} onChange={ev => setEditForm(f => ({ ...f, account: ev.target.value }))} placeholder="Account / Note" className="input px-2.5 py-1.5 text-xs w-full sm:flex-1 sm:min-w-[120px]" />
+                        </div>
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap">
-                        <div className="flex items-center gap-4">
-                          <button onClick={() => saveEdit(e.id)} disabled={editSaving} className="text-success font-semibold disabled:opacity-40">✓</button>
-                          <button onClick={cancelEdit} className="text-muted">×</button>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => saveEdit(e.id)} disabled={editSaving} className="w-7 h-7 flex items-center justify-center rounded-lg text-success hover:bg-success-tint disabled:opacity-40" aria-label="Save">
+                            <Check className="w-4 h-4" strokeWidth={2.5} />
+                          </button>
+                          <button onClick={cancelEdit} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:bg-black/5" aria-label="Cancel">
+                            <X className="w-4 h-4" strokeWidth={2.5} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -592,9 +586,13 @@ export default function CustomerLedgerPage() {
                       </td>
                       <td className="px-4 py-3 text-success/80 italic text-xs max-w-[180px] truncate">{e.account || "—"}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-4">
-                          <button onClick={() => startEdit(e)} className="text-muted/50 hover:text-accent transition-colors" title="Edit entry">✎</button>
-                          <button onClick={() => handleDelete(e.id)} className="text-muted/50 hover:text-danger transition-colors text-lg leading-none" title="Delete entry">×</button>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => startEdit(e)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-accent hover:bg-accent-tint transition-colors" aria-label="Edit entry">
+                            <Pencil className="w-4 h-4" strokeWidth={2} />
+                          </button>
+                          <button onClick={() => handleDelete(e.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-danger hover:bg-danger-tint transition-colors" aria-label="Delete entry">
+                            <Trash2 className="w-4 h-4" strokeWidth={2} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -616,9 +614,13 @@ export default function CustomerLedgerPage() {
                     </td>
                     <td className="px-4 py-3 text-muted text-xs max-w-[180px] truncate">{e.account || "—"}</td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex items-center gap-4">
-                        <button onClick={() => startEdit(e)} className="text-muted/50 hover:text-accent transition-colors" title="Edit entry">✎</button>
-                        <button onClick={() => handleDelete(e.id)} className="text-muted/50 hover:text-danger transition-colors text-lg leading-none" title="Delete entry">×</button>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => startEdit(e)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-accent hover:bg-accent-tint transition-colors" aria-label="Edit entry">
+                          <Pencil className="w-4 h-4" strokeWidth={2} />
+                        </button>
+                        <button onClick={() => handleDelete(e.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-danger hover:bg-danger-tint transition-colors" aria-label="Delete entry">
+                          <Trash2 className="w-4 h-4" strokeWidth={2} />
+                        </button>
                       </div>
                     </td>
                   </tr>
