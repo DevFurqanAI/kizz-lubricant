@@ -2,9 +2,11 @@ import type { FullCustomer } from "@/lib/customercache";
 import { toNum, fmtDate } from "@/lib/utils";
 
 /**
- * Builds a polished Excel (.xlsx) ledger statement for one customer:
- * a dark branded letterhead, a clean customer-info grid, then a
- * zebra-striped transaction table with a running balance and totals band.
+ * Builds an Excel (.xlsx) ledger statement for one customer, matching the
+ * classic colour-coded template: a light-blue letterhead banner, a 2x4
+ * colour-block info grid (account title / whatsapp / land line / cell /
+ * CNIC / e-mail / owner), a red mailing-address band, then a plain
+ * bordered transaction table with a running balance.
  *
  * ExcelJS is imported dynamically so it only downloads when someone exports —
  * it never touches the page's initial bundle.
@@ -14,22 +16,24 @@ const BUSINESS_NAME = "KIZZ LUBRICANTS";
 export const XLSX_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-// Brand palette (ARGB).
-const INK = "FF15161A";
-const ACCENT = "FFE2540C";
-const ACCENT_TINT = "FFFDEEE6";
-const STRIPE = "FFF7F8FA";
-const LABEL_BG = "FFEEF0F3";
-const BORDER = "FFE2E4E8";
-const TEXT = "FF1F2430";
-const MUTED = "FF6B7280";
-const GREEN = "FF047857";
+// Template palette (ARGB) — matched to the reference spreadsheet.
+const TITLE_BG = "FFD9E5F5";
+const ACCOUNT_GREEN = "FF6AA84F";
+const VALUE_ORANGE = "FFF1C232";
+const CNIC_BLUE = "FF4A86E8";
+const OWNER_LIGHTBLUE = "FF9FC5E8";
+const WHATSAPP_RED = "FF990000";
+const LANDLINE_GRAY = "FF999999";
+const CELL_LIGHTGRAY = "FFD9D9D9";
+const EMAIL_YELLOW = "FFFFD966";
+const MAILING_RED = "FFFF0000";
+const TABLE_HEADER_BG = "FFCFE2F3";
+const BORDER = "FF000000";
+const TEXT = "FF000000";
 const WHITE = "FFFFFFFF";
 
 const NUM_FMT = "#,##0";
 const grp = (n: number) => n.toLocaleString("en-US");
-
-const HEADER_ROW = 8; // ledger table header row (letterhead + info sit above)
 
 type BSide = { style: "thin" | "medium"; color: { argb: string } };
 type Border = { top?: BSide; left?: BSide; right?: BSide; bottom?: BSide };
@@ -39,9 +43,7 @@ export async function buildLedgerBlob(customer: FullCustomer): Promise<Blob> {
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = "Kizz Lubricants";
-  const ws = wb.addWorksheet("Ledger", {
-    views: [{ state: "frozen", ySplit: HEADER_ROW }],
-  });
+  const ws = wb.addWorksheet("Ledger");
 
   const fill = (argb: string) =>
     ({ type: "pattern" as const, pattern: "solid" as const, fgColor: { argb } });
@@ -58,7 +60,6 @@ export async function buildLedgerBlob(customer: FullCustomer): Promise<Blob> {
     numFmt?: string;
     border?: Border;
     wrap?: boolean;
-    indent?: number;
   };
 
   const setCell = (row: number, col: number, value: unknown, s: Style = {}) => {
@@ -66,7 +67,7 @@ export async function buildLedgerBlob(customer: FullCustomer): Promise<Blob> {
     cell.value = value as never;
     cell.font = {
       name: "Calibri",
-      size: s.size ?? 10,
+      size: s.size ?? 11,
       bold: s.bold ?? false,
       italic: s.italic ?? false,
       color: { argb: s.color ?? TEXT },
@@ -75,7 +76,6 @@ export async function buildLedgerBlob(customer: FullCustomer): Promise<Blob> {
       horizontal: s.align ?? "left",
       vertical: "middle",
       wrapText: s.wrap ?? false,
-      indent: s.indent ?? 0,
     };
     if (s.fill) cell.fill = fill(s.fill);
     if (s.numFmt) cell.numFmt = s.numFmt;
@@ -92,34 +92,39 @@ export async function buildLedgerBlob(customer: FullCustomer): Promise<Blob> {
     }
   };
 
-  // ── Row 1: dark letterhead banner ─────────────────────────
-  ws.getRow(1).height = 30;
-  merge(1, 1, 1, 6, BUSINESS_NAME, { fill: INK, color: WHITE, bold: true, size: 16, align: "left", indent: 1 });
-  merge(1, 7, 1, 9, "LEDGER STATEMENT", { fill: INK, color: "FFB9B0F7", bold: true, size: 9, align: "right", indent: 1 });
+  // ── Row 1: letterhead banner ──────────────────────────────
+  ws.getRow(1).height = 40;
+  merge(1, 1, 1, 9, BUSINESS_NAME, { fill: TITLE_BG, color: TEXT, bold: true, size: 26, align: "center" });
 
-  // ── Row 2: thin accent rule ───────────────────────────────
-  ws.getRow(2).height = 5;
-  merge(2, 1, 2, 9, "", { fill: ACCENT });
-
-  // ── Rows 4-7: customer info grid (label | value pairs) ────
-  const info = (row: number, lLabel: string, lValue: string, rLabel: string, rValue: string) => {
-    setCell(row, 1, lLabel, { fill: LABEL_BG, color: MUTED, bold: true, size: 9, align: "right", border: grid });
-    merge(row, 2, row, 4, lValue, { color: TEXT, align: "left", indent: 1, border: grid, wrap: true });
-    setCell(row, 5, rLabel, { fill: LABEL_BG, color: MUTED, bold: true, size: 9, align: "right", border: grid });
-    merge(row, 6, row, 9, rValue, { color: TEXT, align: "left", indent: 1, border: grid, wrap: true });
-  };
+  // ── Rows 2-5: colour-block info grid ──────────────────────
   const acct = customer.accountTitle || customer.name || "—";
-  info(4, "Account Title", acct, "WhatsApp", customer.whatsapp || "—");
-  info(5, "Owner", customer.owner || "—", "Cell", customer.phone || "—");
-  info(6, "CNIC", customer.cnic || "—", "Email", customer.email || "—");
-  info(7, "Address", customer.address || "—", "Statement", fmtDate(new Date().toISOString().slice(0, 10)));
+  const infoRow = (
+    row: number,
+    lBg: string, lColor: string, lValue: string,
+    rBg: string, rColor: string, rValue: string,
+  ) => {
+    ws.getRow(row).height = 22;
+    merge(row, 1, row, 3, lValue, { fill: lBg, color: lColor, bold: true, align: "center", border: grid });
+    setCell(row, 4, "", { fill: WHITE, border: grid });
+    merge(row, 5, row, 9, rValue, { fill: rBg, color: rColor, bold: true, align: "center", border: grid });
+  };
 
-  // ── Row 8: ledger table header ────────────────────────────
+  infoRow(2, ACCOUNT_GREEN, WHITE, "ACCOUNT TITLE", WHATSAPP_RED, WHITE, `Whatsapp #${customer.whatsapp || "—"}`);
+  infoRow(3, VALUE_ORANGE, TEXT, acct, LANDLINE_GRAY, WHITE, "Land Line #");
+  infoRow(4, CNIC_BLUE, WHITE, `CNIC:${customer.cnic || "—"}`, CELL_LIGHTGRAY, TEXT, `Cell # ${customer.phone || "—"}`);
+  infoRow(5, OWNER_LIGHTBLUE, TEXT, `OWNER : ${customer.owner || "—"}`, EMAIL_YELLOW, TEXT, customer.email ? `E-Mail: ${customer.email}` : "E-Mail");
+
+  // ── Row 6: mailing address banner ─────────────────────────
+  ws.getRow(6).height = 28;
+  merge(6, 1, 6, 9, `Mailing Address:${customer.address || "—"}`, { fill: MAILING_RED, color: TEXT, bold: true, size: 14, align: "center" });
+
+  // ── Row 7: ledger table header ────────────────────────────
+  const HEADER_ROW = 7;
   const headers = ["Date", "Product", "Packing", "Unit", "Qty", "Rate", "Debit", "Credit", "Balance"];
   const aligns: Align[] = ["left", "left", "center", "center", "right", "right", "right", "right", "right"];
   ws.getRow(HEADER_ROW).height = 22;
   headers.forEach((h, i) =>
-    setCell(HEADER_ROW, i + 1, h, { fill: INK, color: WHITE, bold: true, size: 10, align: aligns[i], border: grid }),
+    setCell(HEADER_ROW, i + 1, h, { fill: TABLE_HEADER_BG, color: TEXT, bold: true, align: aligns[i], border: grid }),
   );
 
   // Track widest content per column so nothing gets clipped.
@@ -127,33 +132,34 @@ export async function buildLedgerBlob(customer: FullCustomer): Promise<Blob> {
   const fit = (col0: number, text: string) => { widths[col0] = Math.max(widths[col0], text.length); };
 
   // ── Data rows ─────────────────────────────────────────────
-  const balColor = (b: number) => (b > 0 ? ACCENT : b < 0 ? GREEN : MUTED);
   let idx = 0;
   for (const e of customer.entries) {
     const rr = HEADER_ROW + 1 + idx;
-    const bg = idx % 2 === 1 ? STRIPE : WHITE;
     const debit = toNum(e.debit);
     const credit = toNum(e.credit);
     const bal = toNum(e.balance);
     const isPayment = credit > 0 && debit === 0 && (!e.product || e.product === "Payment");
 
-    setCell(rr, 1, fmtDate(e.date), { fill: bg, align: "left", border: grid });
+    setCell(rr, 1, fmtDate(e.date), { align: "left", border: grid });
     fit(0, fmtDate(e.date));
     if (isPayment) {
-      merge(rr, 2, rr, 4, "Payment Received", { fill: bg, color: GREEN, italic: true, align: "left", border: grid });
+      setCell(rr, 2, "Receiving Amount", { align: "left", border: grid });
+      setCell(rr, 3, "", { border: grid });
+      setCell(rr, 4, "", { border: grid });
+      fit(1, "Receiving Amount");
     } else {
-      setCell(rr, 2, e.product || "", { fill: bg, align: "left", border: grid });
-      setCell(rr, 3, e.packing || "", { fill: bg, align: "center", border: grid });
-      setCell(rr, 4, e.unit || "", { fill: bg, align: "center", border: grid });
+      setCell(rr, 2, e.product || "", { align: "left", border: grid });
+      setCell(rr, 3, e.packing || "", { align: "center", border: grid });
+      setCell(rr, 4, e.unit || "", { align: "center", border: grid });
       fit(1, e.product || "");
       fit(2, e.packing || "");
       fit(3, e.unit || "");
     }
-    setCell(rr, 5, e.qty ? toNum(e.qty) : "", { fill: bg, align: "right", numFmt: NUM_FMT, border: grid });
-    setCell(rr, 6, e.rate ? toNum(e.rate) : "", { fill: bg, align: "right", numFmt: NUM_FMT, border: grid });
-    setCell(rr, 7, debit > 0 ? debit : "", { fill: bg, align: "right", numFmt: NUM_FMT, border: grid });
-    setCell(rr, 8, credit > 0 ? credit : "", { fill: bg, color: GREEN, align: "right", numFmt: NUM_FMT, border: grid });
-    setCell(rr, 9, bal === 0 ? "nil" : bal, { fill: bg, color: balColor(bal), bold: true, align: "right", numFmt: NUM_FMT, border: grid });
+    setCell(rr, 5, e.qty ? toNum(e.qty) : "", { align: "right", numFmt: NUM_FMT, border: grid });
+    setCell(rr, 6, e.rate ? toNum(e.rate) : "", { align: "right", numFmt: NUM_FMT, border: grid });
+    setCell(rr, 7, debit > 0 ? debit : "", { align: "right", numFmt: NUM_FMT, border: grid });
+    setCell(rr, 8, credit > 0 ? credit : "", { align: "right", numFmt: NUM_FMT, border: grid });
+    setCell(rr, 9, bal === 0 ? "nil" : bal, { align: "right", numFmt: NUM_FMT, border: grid });
 
     if (e.qty) fit(4, grp(toNum(e.qty)));
     if (e.rate) fit(5, grp(toNum(e.rate)));
@@ -169,17 +175,13 @@ export async function buildLedgerBlob(customer: FullCustomer): Promise<Blob> {
   const last = customer.entries[customer.entries.length - 1];
   const currentBalance = last ? toNum(last.balance) : 0;
   const tr = HEADER_ROW + 1 + idx;
-  const topMed: Border = { top: { style: "medium", color: { argb: INK } }, left: thin, right: thin, bottom: thin };
-  merge(tr, 1, tr, 6, "TOTAL", { fill: ACCENT_TINT, bold: true, size: 10, align: "right", indent: 1, border: topMed });
-  setCell(tr, 7, totalDebit, { fill: ACCENT_TINT, bold: true, align: "right", numFmt: NUM_FMT, border: topMed });
-  setCell(tr, 8, totalCredit, { fill: ACCENT_TINT, bold: true, color: GREEN, align: "right", numFmt: NUM_FMT, border: topMed });
-  setCell(tr, 9, currentBalance === 0 ? "nil" : currentBalance, { fill: ACCENT_TINT, bold: true, color: balColor(currentBalance), align: "right", numFmt: NUM_FMT, border: topMed });
+  merge(tr, 1, tr, 6, "TOTAL", { fill: TABLE_HEADER_BG, bold: true, align: "right", border: grid });
+  setCell(tr, 7, totalDebit, { fill: TABLE_HEADER_BG, bold: true, align: "right", numFmt: NUM_FMT, border: grid });
+  setCell(tr, 8, totalCredit, { fill: TABLE_HEADER_BG, bold: true, align: "right", numFmt: NUM_FMT, border: grid });
+  setCell(tr, 9, currentBalance === 0 ? "nil" : currentBalance, { fill: TABLE_HEADER_BG, bold: true, align: "right", numFmt: NUM_FMT, border: grid });
   fit(6, grp(totalDebit));
   fit(7, grp(totalCredit));
   fit(8, currentBalance === 0 ? "nil" : grp(currentBalance));
-
-  // ── Footer note ───────────────────────────────────────────
-  merge(tr + 2, 1, tr + 2, 9, `Generated ${fmtDate(new Date().toISOString().slice(0, 10))} · Kizz Lubricants`, { color: MUTED, italic: true, size: 8, align: "right" });
 
   // Content-based widths (+padding), clamped to a comfortable range.
   widths.forEach((w, i) => { ws.getColumn(i + 1).width = Math.min(30, Math.max(10, w + 3)); });
