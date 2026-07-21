@@ -20,7 +20,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <DashboardGuard>
               <div className="min-h-screen bg-canvas">
                 <Sidebar />
-                <main className="md:ml-[248px] pt-14 pb-24 md:pt-0 md:pb-0 min-h-screen overflow-y-auto">
+                <main className="md:ml-[var(--sidebar-w,248px)] transition-[margin] duration-200 ease-out pt-14 pb-24 md:pt-0 md:pb-0 min-h-screen overflow-y-auto">
                   <div className="p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto">
                   <PageTransition>{children}</PageTransition>
                 </div>
