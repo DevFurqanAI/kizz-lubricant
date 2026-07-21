@@ -57,7 +57,7 @@ export function DateRangeFilter({
         </button>
       </div>
       {isCustom && (
-        <div className="flex items-center gap-2">
+        <div className="rise flex items-center gap-2">
           <input
             type="date"
             className="input !w-auto !py-1.5 !text-[12.5px]"

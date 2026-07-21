@@ -75,7 +75,7 @@ export function RangeFilter({
         </button>
       </div>
       {isCustom && (
-        <div className="flex items-center gap-2">
+        <div className="rise flex items-center gap-2">
           <select
             className="select !w-auto !py-1.5 !text-[12.5px]"
             value={customFrom}

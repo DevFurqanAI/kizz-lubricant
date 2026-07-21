@@ -15,6 +15,7 @@ import { SearchInput } from "@/components/search-input";
 import { saveOrShareBlob } from "@/lib/file-download";
 import { Users, FileSpreadsheet, Pencil, Trash2, Check, X } from "lucide-react";
 import { validateCustomer, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
+import { useContentFadeKey } from "@/lib/use-fade-key";
 
 const PAGE_SIZE = 50;
 const cacheKey = (q: string, page: number) => `${q}|p${page}`;
@@ -216,6 +217,8 @@ export default function CustomersPage() {
     }
   };
 
+  const customersFadeKey = useContentFadeKey(customers);
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -238,7 +241,7 @@ export default function CustomersPage() {
       </div>
 
       {showForm && (
-        <div className="card p-6">
+        <div className="rise card p-6">
           <h3 className="font-semibold text-ink mb-4">New Customer</h3>
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             {[
@@ -306,7 +309,7 @@ export default function CustomersPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[640px]">
               <thead><tr className="bg-black/[0.02] border-b border-line">{["Name", "CNIC", "Phone", "Email", "Address", "Balance", ""].map(h => <th key={h} className={`th ${h === "Balance" ? "text-right" : "text-left"}`}>{h}</th>)}</tr></thead>
-              <tbody className="divide-y divide-line">
+              <tbody key={customersFadeKey} className="divide-y divide-line content-fade">
                 {customers.map(c => {
                   const bal = c.balance ?? 0;
                   return editId === c.id ? (
@@ -354,7 +357,7 @@ export default function CustomersPage() {
         </div>
 
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div key={customersFadeKey} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 content-fade">
           {customers.map((c) => {
             const bal = c.balance ?? 0;
             const isEditing = editId === c.id;

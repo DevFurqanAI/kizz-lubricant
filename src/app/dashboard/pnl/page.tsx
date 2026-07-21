@@ -11,6 +11,7 @@ import { RangeFilter } from "@/components/range-filter";
 import { filterPnlRows, recomputePnlGrand, describeRange, type PnlMonthRow, type RangeSelection } from "@/lib/pnl-range";
 import { useToast } from "@/components/toast";
 import { BarChart3, FileSpreadsheet } from "lucide-react";
+import { useContentFadeKey } from "@/lib/use-fade-key";
 
 type MonthRow = PnlMonthRow;
 
@@ -32,6 +33,7 @@ export default function PnlPage() {
 
   const filteredRows = useMemo(() => filterPnlRows(data?.rows ?? [], range), [data, range]);
   const filteredGrand = useMemo(() => recomputePnlGrand(filteredRows), [filteredRows]);
+  const rowsFadeKey = useContentFadeKey(filteredRows);
 
   const load = useCallback(() => {
     setError(false);
@@ -195,7 +197,7 @@ export default function PnlPage() {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-line">
+            <tbody key={rowsFadeKey} className="divide-y divide-line content-fade">
               {filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={8}>

@@ -19,6 +19,7 @@ import { validateAmountEntry, hasErrors, firstError, type FieldErrors } from "@/
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { resolveDateRange, encodeDateRange, decodeDateRange, type DateRangeSelection } from "@/lib/date-range";
 import { buildQueryString } from "@/lib/url-filter-sync";
+import { useContentFadeKey } from "@/lib/use-fade-key";
 
 type Row = { id: number; date: string; detail: string; amount: string };
 type ListResponse = { rows: Row[]; total: number; months: number; count: number };
@@ -254,6 +255,8 @@ export default function ExpensesPage() {
     }
   };
 
+  const rowsFadeKey = useContentFadeKey(rows);
+
   return (
     <div className="space-y-6 pb-10">
       {/* ── Header ─────────────────────────────────────────── */}
@@ -364,7 +367,7 @@ export default function ExpensesPage() {
                 <th className="th" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-line">
+            <tbody key={rowsFadeKey} className={loading ? "divide-y divide-line" : "divide-y divide-line content-fade"}>
               {loading
                 ? <TableSkeleton rows={6} cols={4} />
                 : error

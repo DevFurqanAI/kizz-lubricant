@@ -18,6 +18,7 @@ import { AmountRangeFilter } from "@/components/amount-range-filter";
 import { FilterBar } from "@/components/filter-bar";
 import { resolveDateRange, encodeDateRange, decodeDateRange, type DateRangeSelection } from "@/lib/date-range";
 import { buildQueryString } from "@/lib/url-filter-sync";
+import { useContentFadeKey } from "@/lib/use-fade-key";
 import { TrendingUp, FileSpreadsheet, Pencil, Trash2, Check, X } from "lucide-react";
 import { validateSale, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
@@ -337,6 +338,9 @@ export default function SalesPage() {
     }
   };
 
+  const rowsFadeKey = useContentFadeKey(rows);
+  const monthsFadeKey = useContentFadeKey(months);
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -357,7 +361,7 @@ export default function SalesPage() {
       </div>
 
       {showForm && (
-        <div className="card p-6">
+        <div className="rise card p-6">
           <h3 className="font-semibold text-ink mb-4">New Sale</h3>
 
           {/* Customer link — the automation: pick one and it posts to their ledger too */}
@@ -512,7 +516,7 @@ export default function SalesPage() {
                 <th className="th" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-line">
+            <tbody key={rowsFadeKey} className={loading ? "divide-y divide-line" : "divide-y divide-line content-fade"}>
               {loading ? (
                 <TableSkeleton rows={6} cols={10} />
               ) : error ? (
@@ -615,7 +619,7 @@ export default function SalesPage() {
                   <th className="th text-right">Sale Kg / L</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-line">
+              <tbody key={monthsFadeKey} className={monthsLoading ? "divide-y divide-line" : "divide-y divide-line content-fade"}>
                 {monthsLoading ? (
                   <TableSkeleton rows={5} cols={4} />
                 ) : months.length === 0 ? (

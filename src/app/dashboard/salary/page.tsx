@@ -18,6 +18,7 @@ import { AmountRangeFilter } from "@/components/amount-range-filter";
 import { FilterBar } from "@/components/filter-bar";
 import { resolveDateRange, encodeDateRange, decodeDateRange, type DateRangeSelection } from "@/lib/date-range";
 import { buildQueryString } from "@/lib/url-filter-sync";
+import { useContentFadeKey } from "@/lib/use-fade-key";
 import { Wallet, ArrowDownWideNarrow, ArrowUpNarrowWide, FileSpreadsheet, Pencil, Trash2, Check, X } from "lucide-react";
 import { validateSalary, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
@@ -297,6 +298,8 @@ export default function SalaryPage() {
     }
   };
 
+  const rowsFadeKey = useContentFadeKey(rows);
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -326,7 +329,7 @@ export default function SalaryPage() {
       </div>
 
       {showForm && (
-        <div className="card p-6">
+        <div className="rise card p-6">
           <h3 className="font-semibold text-ink mb-4">New Payment</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[{ key: "date", label: "Date", type: "date" }, { key: "employee", label: "Employee *", type: "text" }, { key: "amount", label: "Amount (Rs) *", type: "number" }, { key: "account", label: "Paid Via / Account", type: "text" }].map(({ key, label, type }) => (
@@ -399,7 +402,7 @@ export default function SalaryPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[520px]">
               <thead><tr className="bg-black/[0.02] border-b border-line">{["Date", "Employee", "Amount", "Paid Via", ""].map(h => <th key={h} className={`th ${h === "Amount" ? "text-right" : "text-left"}`}>{h}</th>)}</tr></thead>
-              <tbody className="divide-y divide-line">
+              <tbody key={rowsFadeKey} className="divide-y divide-line content-fade">
                 {rows.map(r => editId === r.id ? (
                   <tr key={r.id} className="bg-accent-tint/40">
                     <td className="px-4 py-2" colSpan={4}>
@@ -433,7 +436,7 @@ export default function SalaryPage() {
         </div>
 
       ) : viewStyle === "cards" ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div key={rowsFadeKey} className="grid grid-cols-1 sm:grid-cols-2 gap-3 content-fade">
           {rows.map(r => editId === r.id ? (
             <div key={r.id} className="card p-4 space-y-2 bg-accent-tint/40">
               <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
@@ -462,7 +465,7 @@ export default function SalaryPage() {
         </div>
 
       ) : (
-        <div className="card divide-y divide-line">
+        <div key={rowsFadeKey} className="card divide-y divide-line content-fade">
           {rows.map(r => editId === r.id ? (
             <div key={r.id} className="px-4 py-3 bg-accent-tint/40 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
               <EditRowInputs editForm={editForm} setEditForm={setEditForm} dense />

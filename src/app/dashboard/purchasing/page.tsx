@@ -18,6 +18,7 @@ import { AmountRangeFilter } from "@/components/amount-range-filter";
 import { FilterBar } from "@/components/filter-bar";
 import { resolveDateRange, encodeDateRange, decodeDateRange, type DateRangeSelection } from "@/lib/date-range";
 import { buildQueryString } from "@/lib/url-filter-sync";
+import { useContentFadeKey } from "@/lib/use-fade-key";
 import { TrendingDown, FileSpreadsheet, Pencil, Trash2, Check, X } from "lucide-react";
 import { validateAmountEntry, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
@@ -235,6 +236,8 @@ export default function PurchasingPage() {
     syncUrl({ dateRange: v, page: 1 });
   };
 
+  const rowsFadeKey = useContentFadeKey(rows);
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -255,7 +258,7 @@ export default function PurchasingPage() {
       </div>
 
       {showForm && (
-        <div className="card p-6">
+        <div className="rise card p-6">
           <h3 className="font-semibold text-ink mb-4">New Entry</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[{ key: "date", label: "Date", type: "date" }, { key: "detail", label: "Detail *", type: "text" }, { key: "amount", label: "Amount (Rs) *", type: "number" }].map(({ key, label, type }) => (
@@ -299,7 +302,7 @@ export default function PurchasingPage() {
                 <th className="th" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-line">
+            <tbody key={rowsFadeKey} className={loading ? "divide-y divide-line" : "divide-y divide-line content-fade"}>
               {loading ? <TableSkeleton rows={6} cols={4} /> :
                error ? <tr><td colSpan={4}><ErrorState onRetry={() => { const { from, to } = resolveDateRange(dateRange); load(search, page, sort, from, to, amountMin, amountMax); }} compact /></td></tr> :
                rows.length === 0 ? <tr><td colSpan={4}><EmptyState icon={TrendingDown} compact title={search ? "No matches" : "No entries yet"} description={search ? `Nothing matches “${search}”.` : "Record your first purchase with the “Add Purchasing” button."} /></td></tr> :

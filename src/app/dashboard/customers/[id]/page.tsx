@@ -18,6 +18,7 @@ import { DateRangeFilter } from "@/components/date-range-filter";
 import { AmountRangeFilter } from "@/components/amount-range-filter";
 import { FilterBar } from "@/components/filter-bar";
 import { resolveDateRange, describeDateRange, type DateRangeSelection } from "@/lib/date-range";
+import { useSettledKey } from "@/lib/use-fade-key";
 
 const VISIBLE_LIMIT = 100; // progressively reveal older rows beyond this
 
@@ -57,6 +58,7 @@ export default function CustomerLedgerPage() {
   const [dateRange, setDateRange] = useState<DateRangeSelection>({ preset: "all" });
   const [amountMin, setAmountMin] = useState("");
   const [amountMax, setAmountMax] = useState("");
+  const entriesFadeKey = useSettledKey(`${JSON.stringify(dateRange)}|${amountMin}|${amountMax}|${showAll}`);
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -410,7 +412,7 @@ export default function CustomerLedgerPage() {
       </FilterBar>
 
       {showPayForm && (
-        <div className="card p-6">
+        <div className="rise card p-6">
           <h3 className="font-semibold text-ink mb-1">Record Payment</h3>
           <p className="text-xs text-muted mb-4">Money received from this customer — posts as a credit that reduces what they owe.</p>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -449,7 +451,7 @@ export default function CustomerLedgerPage() {
       )}
 
       {showForm && (
-        <div className="card p-6">
+        <div className="rise card p-6">
           <h3 className="font-semibold text-ink mb-4">New Ledger Entry</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {[
@@ -512,7 +514,7 @@ export default function CustomerLedgerPage() {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-line">
+            <tbody key={entriesFadeKey} className="divide-y divide-line content-fade">
               {filteredEntries.length === 0 && (
                 <tr>
                   <td colSpan={11}>

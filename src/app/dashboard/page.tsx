@@ -17,6 +17,7 @@ import {
   COST_SALARY,
 } from "@/components/charts";
 import { dashboardCache, DASH_KEY, type DashboardData, type Period } from "@/lib/dashboard-cache";
+import { useContentFadeKey } from "@/lib/use-fade-key";
 import { availableYears, yearSlice, sumSpark } from "@/lib/overview-sparklines";
 
 const PERIODS_BEFORE_YEAR: { key: Period; label: string; word: string }[] = [
@@ -80,6 +81,8 @@ export default function DashboardPage() {
     const years = availableYears(data.sparklines.all);
     if (years.length > 0) setYear(years[years.length - 1]);
   }, [data, year]);
+
+  const dataFadeKey = useContentFadeKey(data);
 
   if (loading && !data) return <DashboardSkeleton />;
   if (error && !data) return <div className="card"><ErrorState onRetry={() => load()} /></div>;
@@ -366,7 +369,7 @@ export default function DashboardPage() {
                 <th className="th text-right">Balance</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-line">
+            <tbody key={dataFadeKey} className="divide-y divide-line content-fade">
               {topBalances.length === 0 ? (
                 <tr>
                   <td colSpan={5}>
@@ -415,7 +418,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Mobile card list */}
-        <div className="sm:hidden divide-y divide-line">
+        <div key={dataFadeKey} className="sm:hidden divide-y divide-line content-fade">
           {topBalances.length === 0 ? (
             <EmptyState
               icon={Users}
