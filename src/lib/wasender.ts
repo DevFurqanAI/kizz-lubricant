@@ -11,6 +11,7 @@
  */
 
 const BASE = "https://wasenderapi.com/api";
+const TIMEOUT_MS = 20_000;
 
 function apiKey(): string {
   const key = process.env.WASENDER_API_KEY;
@@ -18,9 +19,26 @@ function apiKey(): string {
   return key;
 }
 
+/** Fetch with a hard timeout — an unresponsive Wasender must fail fast, not
+ * hang until the platform's function timeout kills the whole request. */
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error("WhatsApp service did not respond in time.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Upload raw bytes and return the public URL Wasender hosts them at. */
 export async function uploadMedia(base64DataUrl: string): Promise<string> {
-  const res = await fetch(`${BASE}/upload`, {
+  const res = await fetchWithTimeout(`${BASE}/upload`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -47,7 +65,7 @@ export async function sendDocument(opts: {
   fileName: string;
   text?: string;
 }): Promise<void> {
-  const res = await fetch(`${BASE}/send-message`, {
+  const res = await fetchWithTimeout(`${BASE}/send-message`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

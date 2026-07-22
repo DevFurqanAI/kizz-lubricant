@@ -134,10 +134,15 @@ export async function GET() {
         ) sub
       `),
       db.execute(sql`
-        SELECT c.id, c.name, c.address, c.phone,
-          (SELECT balance FROM customer_entries ce WHERE ce.customer_id = c.id ORDER BY date DESC, id DESC LIMIT 1) AS balance
+        WITH latest AS (
+          SELECT DISTINCT ON (customer_id) customer_id, balance
+          FROM customer_entries
+          ORDER BY customer_id, date DESC, id DESC
+        )
+        SELECT c.id, c.name, c.address, c.phone, COALESCE(l.balance, 0) AS balance
         FROM customers c
-        ORDER BY ABS(COALESCE((SELECT balance FROM customer_entries ce WHERE ce.customer_id = c.id ORDER BY date DESC, id DESC LIMIT 1),0)) DESC NULLS LAST
+        LEFT JOIN latest l ON l.customer_id = c.id
+        ORDER BY ABS(COALESCE(l.balance, 0)) DESC NULLS LAST
         LIMIT 10
       `),
       dailySeries(sql`${todayExpr} - interval '13 days'`, todayExpr),

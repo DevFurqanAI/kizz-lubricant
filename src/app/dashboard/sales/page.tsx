@@ -5,7 +5,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { api, fetchAllRows } from "@/lib/api";
 import { formatMoney, toNum, fmtDate } from "@/lib/utils";
 import { createLocalCache } from "@/lib/localCache";
-import { customerDetailCache } from "@/lib/customercache";
+import { customerDetailCache, customerListCache } from "@/lib/customercache";
 import { saveOrShareBlob } from "@/lib/file-download";
 import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
@@ -242,8 +242,9 @@ export default function SalesPage() {
         paidMethod: form.paidMethod || null,
         paidNote: form.paidNote || null,
       });
-      // The linked customer's ledger just changed — drop its cached detail.
-      if (form.customerId) customerDetailCache.delete(form.customerId);
+      // The linked customer's ledger just changed — drop its cached detail
+      // and the list page's cached balance.
+      if (form.customerId) { customerDetailCache.delete(form.customerId); customerListCache.clear(); }
       setForm({ date: new Date().toISOString().slice(0, 10), detail: "", packing: "", unit: "", qty: "", rate: "", amount: "", saleKg: "", saleKgUnit: "Kg", customerId: "", paidNow: "", paidMethod: "", paidNote: "" });
       autoAmt.current = "";
       setShowForm(false);
@@ -271,10 +272,14 @@ export default function SalesPage() {
     setCount(c => Math.max(0, c - 1));
     try {
       await api.del(`/sales/${id}`);
-      if (del?.customerId) customerDetailCache.delete(String(del.customerId));
+      if (del?.customerId) { customerDetailCache.delete(String(del.customerId)); customerListCache.clear(); }
       salesCache.clear();
+      const newCount = Math.max(0, prevCount - 1);
+      const maxPage = Math.max(1, Math.ceil(newCount / PAGE_SIZE));
+      const nextPage = Math.min(page, maxPage);
+      if (nextPage !== page) { setPage(nextPage); syncUrl({ page: nextPage }); }
       const { from, to } = resolveDateRange(dateRange);
-      load(search, page, sort, from, to, amountMin, amountMax, customerId, { silent: true });
+      load(search, nextPage, sort, from, to, amountMin, amountMax, customerId, { silent: true });
       toast.success("Sale deleted");
     } catch { setRows(prevRows); setTotal(prevTotal); setCount(prevCount); toast.error("Couldn't delete sale"); }
   };
@@ -308,7 +313,7 @@ export default function SalesPage() {
     setEditId(null);
     try {
       await api.patch(`/sales/${id}`, { ...editForm, packing: editForm.packing || null, unit: editForm.unit || null, qty: editForm.qty ? Number(editForm.qty) : null, rate: editForm.rate ? Number(editForm.rate) : null, amount: Number(editForm.amount), saleKg: editForm.saleKg ? Number(editForm.saleKg) : null, saleKgUnit: editForm.saleKg ? editForm.saleKgUnit : null });
-      if (edited?.customerId) customerDetailCache.delete(String(edited.customerId));
+      if (edited?.customerId) { customerDetailCache.delete(String(edited.customerId)); customerListCache.clear(); }
       salesCache.clear();
       if (months.length) loadMonths();
       const { from, to } = resolveDateRange(dateRange);

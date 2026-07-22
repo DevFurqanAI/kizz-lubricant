@@ -190,15 +190,20 @@ export default function CustomersPage() {
     e.preventDefault(); e.stopPropagation();
     if (!(await confirm({ title: "Delete this customer?", message: "This permanently removes the customer and their entire ledger.", confirmText: "Delete", danger: true }))) return;
     const prev = customers;
+    const prevCount = count;
     setCustomers(cs => cs.filter(c => c.id !== id));
     setCount(n => Math.max(0, n - 1));
     try {
       await api.del(`/customers/${id}`);
       customerListCache.clear();
       customerDetailCache.delete(String(id));
-      load(search, page, { silent: true });
+      const newCount = Math.max(0, prevCount - 1);
+      const maxPage = Math.max(1, Math.ceil(newCount / PAGE_SIZE));
+      const nextPage = Math.min(page, maxPage);
+      if (nextPage !== page) setPage(nextPage);
+      load(search, nextPage, { silent: true });
       toast.success("Customer deleted");
-    } catch { setCustomers(prev); toast.error("Couldn't delete customer"); }
+    } catch { setCustomers(prev); setCount(prevCount); toast.error("Couldn't delete customer"); }
   };
 
   const cycleStyle = () => setViewStyle(s => VIEW_STYLES[(VIEW_STYLES.indexOf(s) + 1) % VIEW_STYLES.length]);

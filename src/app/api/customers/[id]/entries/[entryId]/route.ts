@@ -6,6 +6,7 @@ import { customerEntries, sales } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { recalcBalances } from "@/lib/ledger";
 import { validateLedgerEntry, hasErrors, firstError } from "@/lib/validation";
+import { parseIdParam } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +29,9 @@ export async function DELETE(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const customerId = Number(params.id);
-    const entryId = Number(params.entryId);
+    const customerId = parseIdParam(params.id);
+    const entryId = parseIdParam(params.entryId);
+    if (customerId === null || entryId === null) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
 
     // Two-way sync: if this ledger row is the mirror of a sale, deleting it
     // deletes the originating sale too, so the two tables stay consistent.
@@ -58,21 +60,30 @@ export async function PATCH(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const customerId = Number(params.id);
+    const customerId = parseIdParam(params.id);
+    const entryId = parseIdParam(params.entryId);
+    if (customerId === null || entryId === null) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
     const b = await req.json();
 
     const errors = validateLedgerEntry(b, "update");
     if (hasErrors(errors)) return NextResponse.json({ error: firstError(errors), fields: errors }, { status: 400 });
-
-    const entryId = Number(params.entryId);
-    const debit = Number(b.debit ?? 0);
-    const detail = typeof b.product === "string" ? b.product.trim() : "";
 
     // Two-way sync: does this ledger row mirror a sale?
     const [backingSale] = await db
       .select({ id: sales.id })
       .from(sales)
       .where(eq(sales.ledgerEntryId, entryId));
+
+    // Merge onto the existing row so fields the caller didn't send are left
+    // untouched instead of being silently zeroed/nulled — this is a partial
+    // update (mode: "update" in validateLedgerEntry only checks present keys,
+    // so the write must honor that same partial-update contract).
+    const [existing] = await db.select().from(customerEntries).where(eq(customerEntries.id, entryId));
+    if (!existing) return NextResponse.json({ error: "Entry not found." }, { status: 404 });
+
+    const debit = "debit" in b ? Number(b.debit ?? 0) : Number(existing.debit ?? 0);
+    const detail =
+      "product" in b ? (typeof b.product === "string" ? b.product.trim() : "") : (existing.product ?? "").trim();
 
     // A sale-backed entry must stay a valid sale. A sale needs a non-empty
     // `detail` and a positive `amount` (= the debit). If the edit would break
@@ -89,37 +100,39 @@ export async function PATCH(
       );
     }
 
-    // Whitelist editable columns only — never trust the raw body to set id,
-    // customerId, balance or createdAt. balance is recomputed below regardless.
-    await db
-      .update(customerEntries)
-      .set({
-        date: b.date,
-        product: b.product ?? null,
-        packing: b.packing ?? null,
-        unit: b.unit ?? null,
-        qty: num(b.qty),
-        rate: num(b.rate),
-        debit: String(debit),
-        credit: String(Number(b.credit ?? 0)),
-        account: b.account ?? null,
-      })
-      .where(eq(customerEntries.id, entryId));
+    // Whitelist editable columns AND only include keys actually present in the
+    // body — never trust the raw body to set id, customerId, balance or
+    // createdAt, and never overwrite a field the caller didn't send.
+    const update: Record<string, unknown> = {};
+    if ("date" in b) update.date = b.date;
+    if ("product" in b) update.product = b.product ?? null;
+    if ("packing" in b) update.packing = b.packing ?? null;
+    if ("unit" in b) update.unit = b.unit ?? null;
+    if ("qty" in b) update.qty = num(b.qty);
+    if ("rate" in b) update.rate = num(b.rate);
+    if ("debit" in b) update.debit = String(debit);
+    if ("credit" in b) update.credit = String(Number(b.credit ?? 0));
+    if ("account" in b) update.account = b.account ?? null;
+
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json({ error: "No editable fields provided." }, { status: 400 });
+    }
+
+    await db.update(customerEntries).set(update).where(eq(customerEntries.id, entryId));
 
     // Mirror the change back onto the linked sale so both tables agree.
     if (backingSale) {
-      await db
-        .update(sales)
-        .set({
-          date: b.date,
-          detail,
-          packing: b.packing ?? null,
-          unit: b.unit ?? null,
-          qty: num(b.qty),
-          rate: num(b.rate),
-          amount: String(debit),
-        })
-        .where(eq(sales.id, backingSale.id));
+      const saleUpdate: Record<string, unknown> = {};
+      if ("date" in b) saleUpdate.date = b.date;
+      if ("product" in b) saleUpdate.detail = detail;
+      if ("packing" in b) saleUpdate.packing = b.packing ?? null;
+      if ("unit" in b) saleUpdate.unit = b.unit ?? null;
+      if ("qty" in b) saleUpdate.qty = num(b.qty);
+      if ("rate" in b) saleUpdate.rate = num(b.rate);
+      if ("debit" in b) saleUpdate.amount = String(debit);
+      if (Object.keys(saleUpdate).length > 0) {
+        await db.update(sales).set(saleUpdate).where(eq(sales.id, backingSale.id));
+      }
     }
 
     await recalcBalances(customerId);

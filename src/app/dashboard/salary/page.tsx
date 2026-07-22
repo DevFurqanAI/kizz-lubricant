@@ -259,7 +259,17 @@ export default function SalaryPage() {
     setRows(r => r.filter(row => row.id !== id));
     if (del) setTotal(t => t - toNum(del.amount));
     setCount(c => Math.max(0, c - 1));
-    try { await api.del(`/salary/${id}`); salaryCache.clear(); const { from, to } = resolveDateRange(dateRange); load(search, page, dir, from, to, amountMin, amountMax, employee, account, { silent: true }); toast.success("Payment deleted"); }
+    try {
+      await api.del(`/salary/${id}`);
+      salaryCache.clear();
+      const newCount = Math.max(0, prevCount - 1);
+      const maxPage = Math.max(1, Math.ceil(newCount / PAGE_SIZE));
+      const nextPage = Math.min(page, maxPage);
+      if (nextPage !== page) { setPage(nextPage); syncUrl({ page: nextPage }); }
+      const { from, to } = resolveDateRange(dateRange);
+      load(search, nextPage, dir, from, to, amountMin, amountMax, employee, account, { silent: true });
+      toast.success("Payment deleted");
+    }
     catch { setRows(prevRows); setTotal(prevTotal); setCount(prevCount); toast.error("Couldn't delete payment"); }
   };
 

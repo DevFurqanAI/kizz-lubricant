@@ -22,17 +22,24 @@ export async function GET(req: NextRequest) {
       ? or(ilike(customers.name, `%${search}%`), ilike(customers.address, `%${search}%`))
       : undefined;
 
-    // A page of customers, that page's balances (latest running balance per
-    // customer in one DISTINCT ON pass), and the total matching count — parallel.
-    const [list, balances, [{ count }]] = await Promise.all([
+    // A page of customers and the total matching count, in parallel.
+    const [list, [{ count }]] = await Promise.all([
       db.select().from(customers).where(where).orderBy(asc(customers.name), asc(customers.id)).limit(limit).offset(offset),
-      db.execute(sql`
-        SELECT DISTINCT ON (customer_id) customer_id, balance
-        FROM customer_entries
-        ORDER BY customer_id, date DESC, id DESC
-      `),
       db.select({ count: sql<string>`COUNT(*)` }).from(customers).where(where),
     ]);
+
+    // Latest running balance per customer, scoped to just this page's ids —
+    // computing it for every customer in the table on every list request
+    // doesn't scale with total ledger size.
+    const ids = list.map((c) => c.id);
+    const balances = ids.length
+      ? await db.execute(sql`
+          SELECT DISTINCT ON (customer_id) customer_id, balance
+          FROM customer_entries
+          WHERE customer_id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+          ORDER BY customer_id, date DESC, id DESC
+        `)
+      : { rows: [] as unknown[] };
 
     const balMap = new Map(
       (balances.rows as Array<{ customer_id: number; balance: string }>).map((r) => [Number(r.customer_id), Number(r.balance)])

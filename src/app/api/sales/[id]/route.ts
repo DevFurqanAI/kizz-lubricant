@@ -6,6 +6,7 @@ import { sales, customerEntries } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { recalcBalances } from "@/lib/ledger";
 import { validateSale, hasErrors, firstError } from "@/lib/validation";
+import { parseIdParam } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const id = Number(params.id);
+    const id = parseIdParam(params.id);
+    if (id === null) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
     const [existing] = await db
       .select({ customerId: sales.customerId, ledgerEntryId: sales.ledgerEntryId })
       .from(sales)
@@ -40,6 +42,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
+    const id = parseIdParam(params.id);
+    if (id === null) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
     const b = await req.json();
     const errors = validateSale(b, "update");
     if (hasErrors(errors)) {
@@ -62,7 +66,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ error: "No editable fields provided." }, { status: 400 });
     }
 
-    const [row] = await db.update(sales).set(update).where(eq(sales.id, Number(params.id))).returning();
+    const [row] = await db.update(sales).set(update).where(eq(sales.id, id)).returning();
 
     // Automation: keep the mirrored ledger entry in step with the edited sale.
     if (row?.ledgerEntryId && row.customerId) {

@@ -185,8 +185,12 @@ export default function PurchasingPage() {
     try {
       await api.del(`/purchasing/${id}`);
       purchasingCache.clear();
+      const newCount = Math.max(0, prevCount - 1);
+      const maxPage = Math.max(1, Math.ceil(newCount / PAGE_SIZE));
+      const nextPage = Math.min(page, maxPage);
+      if (nextPage !== page) { setPage(nextPage); syncUrl({ page: nextPage }); }
       const { from, to } = resolveDateRange(dateRange);
-      load(search, page, sort, from, to, amountMin, amountMax, { silent: true });
+      load(search, nextPage, sort, from, to, amountMin, amountMax, { silent: true });
       toast.success("Purchase deleted");
     } catch { setRows(prevRows); setTotal(prevTotal); setCount(prevCount); toast.error("Couldn't delete purchase"); }
   };

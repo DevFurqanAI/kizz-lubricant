@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { formatMoney, toNum, fmtDate } from "@/lib/utils";
 import type { CustomerEntry } from "@/db/schema";
 import { FileSpreadsheet, MessageCircle, ReceiptText, Pencil, Trash2, Check, X } from "lucide-react";
-import { customerDetailCache as customerCache, type FullCustomer } from "@/lib/customercache";
+import { customerDetailCache as customerCache, customerListCache, type FullCustomer } from "@/lib/customercache";
 import { saveOrShareBlob } from "@/lib/file-download";
 import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
@@ -108,6 +108,9 @@ export default function CustomerLedgerPage() {
         if (next) customerCache.set(id, next);
         return next;
       });
+      // Entries change the running balance shown on the Customers list — that
+      // cached page would otherwise keep showing the pre-edit balance.
+      customerListCache.clear();
       setForm({ date: new Date().toISOString().slice(0, 10), product: "", packing: "", unit: "", qty: "", rate: "", debit: "", credit: "", account: "" });
       setShowForm(false);
       toast.success("Entry added");
@@ -142,6 +145,9 @@ export default function CustomerLedgerPage() {
         if (next) customerCache.set(id, next);
         return next;
       });
+      // Entries change the running balance shown on the Customers list — that
+      // cached page would otherwise keep showing the pre-edit balance.
+      customerListCache.clear();
       setPayForm({ date: new Date().toISOString().slice(0, 10), amount: "", method: "", note: "" });
       setShowPayForm(false);
       toast.success("Payment recorded");
@@ -163,6 +169,9 @@ export default function CustomerLedgerPage() {
         if (next) customerCache.set(id, next);
         return next;
       });
+      // Entries change the running balance shown on the Customers list — that
+      // cached page would otherwise keep showing the pre-edit balance.
+      customerListCache.clear();
       toast.success("Entry deleted");
     } catch {
       setCustomer(prev);
@@ -219,6 +228,9 @@ export default function CustomerLedgerPage() {
         if (next) customerCache.set(id, next);
         return next;
       });
+      // Entries change the running balance shown on the Customers list — that
+      // cached page would otherwise keep showing the pre-edit balance.
+      customerListCache.clear();
       setEditId(null);
       toast.success("Entry updated");
     } catch {

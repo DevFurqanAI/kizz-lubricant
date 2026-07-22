@@ -186,8 +186,15 @@ export default function ExpensesPage() {
     try {
       await api.del(`/expenses/${id}`);
       clearCache();
+      // Deleting the last row on the last page must clamp back a page —
+      // otherwise the refetch asks for a page that no longer exists and
+      // renders an empty state even though earlier pages still have rows.
+      const newCount = Math.max(0, prevCount - 1);
+      const maxPage = Math.max(1, Math.ceil(newCount / PAGE_SIZE));
+      const nextPage = Math.min(page, maxPage);
+      if (nextPage !== page) { setPage(nextPage); syncUrl({ page: nextPage }); }
       const { from, to } = resolveDateRange(dateRange);
-      load(search, page, sort, from, to, amountMin, amountMax, { silent: true });
+      load(search, nextPage, sort, from, to, amountMin, amountMax, { silent: true });
       toast.success("Expense deleted");
     } catch {
       setRows(prevRows);

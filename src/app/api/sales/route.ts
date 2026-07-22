@@ -112,47 +112,71 @@ export async function POST(req: NextRequest) {
       .values({ date, detail, packing: num(packing), unit: num(unit), qty: num(qty), rate: num(rate), amount: String(amount), saleKg: kg, saleKgUnit: kgUnit, customerId: custId })
       .returning();
 
-    // Automation: mirror the sale into the customer's ledger as a debit.
+    // Automation: mirror the sale into the customer's ledger as a debit. This
+    // is several separate statements (Neon's HTTP driver can't run interactive
+    // transactions — see src/lib/ledger.ts) so if anything after the first
+    // insert fails, best-effort compensate by deleting whatever ledger rows we
+    // already created rather than leaving an orphan debit inflating the
+    // customer's balance forever.
     if (custId) {
-      const [entry] = await db
-        .insert(customerEntries)
-        .values({
-          customerId: custId,
-          date,
-          product: detail,
-          packing: num(packing),
-          unit: num(unit),
-          qty: num(qty),
-          rate: num(rate),
-          debit: String(amount),
-          credit: "0",
-          balance: "0", // recalculated below
-          account: "Sale",
-        })
-        .returning();
+      const createdEntryIds: number[] = [];
+      try {
+        const [entry] = await db
+          .insert(customerEntries)
+          .values({
+            customerId: custId,
+            date,
+            product: detail,
+            packing: num(packing),
+            unit: num(unit),
+            qty: num(qty),
+            rate: num(rate),
+            debit: String(amount),
+            credit: "0",
+            balance: "0", // recalculated below
+            account: "Sale",
+          })
+          .returning();
+        createdEntryIds.push(entry.id);
 
-      // On-spot payment: post the amount received as a standalone credit. It is
-      // NOT linked to the sale — it's real money received, so it survives even
-      // if the sale line is later edited or removed.
-      if (custId && paid > 0) {
-        const acct = [paidMethod, paidNote]
-          .map((s) => (typeof s === "string" ? s.trim() : ""))
-          .filter(Boolean)
-          .join(" · ");
-        // No product line — an empty product is what marks a row as a payment
-        // (matches the ledger render + Excel export detection).
-        await db.insert(customerEntries).values({
-          customerId: custId,
-          date,
-          debit: "0",
-          credit: String(paid),
-          balance: "0", // recalculated below
-          account: acct || null,
-        });
+        // On-spot payment: post the amount received as a standalone credit. It is
+        // NOT linked to the sale — it's real money received, so it survives even
+        // if the sale line is later edited or removed.
+        if (paid > 0) {
+          const acct = [paidMethod, paidNote]
+            .map((s) => (typeof s === "string" ? s.trim() : ""))
+            .filter(Boolean)
+            .join(" · ");
+          // No product line — an empty product is what marks a row as a payment
+          // (matches the ledger render + Excel export detection).
+          const [paymentEntry] = await db
+            .insert(customerEntries)
+            .values({
+              customerId: custId,
+              date,
+              debit: "0",
+              credit: String(paid),
+              balance: "0", // recalculated below
+              account: acct || null,
+            })
+            .returning();
+          createdEntryIds.push(paymentEntry.id);
+        }
+
+        await recalcBalances(custId);
+        await db.update(sales).set({ ledgerEntryId: entry.id }).where(eq(sales.id, row.id));
+      } catch (innerErr) {
+        console.error("POST /sales ledger mirroring failed, rolling back:", innerErr);
+        for (const id of createdEntryIds) {
+          await db.delete(customerEntries).where(eq(customerEntries.id, id)).catch(() => {});
+        }
+        await db.delete(sales).where(eq(sales.id, row.id)).catch(() => {});
+        if (createdEntryIds.length) await recalcBalances(custId).catch(() => {});
+        return NextResponse.json(
+          { error: "Failed to record the sale against the customer's ledger. Nothing was saved — please try again." },
+          { status: 500 }
+        );
       }
-
-      await recalcBalances(custId);
-      await db.update(sales).set({ ledgerEntryId: entry.id }).where(eq(sales.id, row.id));
     }
 
     return NextResponse.json(row, { status: 201 });

@@ -8,6 +8,7 @@ import { buildLedgerBlob, XLSX_MIME } from "@/lib/ledger-xlsx";
 import { uploadMedia, sendDocument } from "@/lib/wasender";
 import { formatMoney, toNum, waNumber } from "@/lib/utils";
 import type { FullCustomer } from "@/lib/customercache";
+import { parseIdParam } from "@/lib/pagination";
 
 // exceljs needs the Node runtime (not edge).
 export const runtime = "nodejs";
@@ -20,7 +21,8 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: "WhatsApp sending is not configured (missing API key)." }, { status: 500 });
   }
 
-  const id = Number(params.id);
+  const id = parseIdParam(params.id);
+  if (id === null) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
   const [customer] = await db.select().from(customers).where(eq(customers.id, id));
   if (!customer) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
 

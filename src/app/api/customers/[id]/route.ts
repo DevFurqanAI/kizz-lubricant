@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { customers, customerEntries } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { validateCustomer, hasErrors, firstError } from "@/lib/validation";
+import { parseIdParam } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const id = Number(params.id);
+    const id = parseIdParam(params.id);
+    if (id === null) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
     const [customer] = await db.select().from(customers).where(eq(customers.id, id));
     if (!customer) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const entries = await db
@@ -34,6 +36,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
+    const id = parseIdParam(params.id);
+    if (id === null) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
     const body = await req.json();
     const errors = validateCustomer(body, "update");
     if (hasErrors(errors)) return NextResponse.json({ error: firstError(errors), fields: errors }, { status: 400 });
@@ -42,7 +46,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ error: "No editable fields provided." }, { status: 400 });
     }
-    const [row] = await db.update(customers).set(update).where(eq(customers.id, Number(params.id))).returning();
+    const [row] = await db.update(customers).set(update).where(eq(customers.id, id)).returning();
     return NextResponse.json(row);
   } catch (err) {
     console.error("PATCH /customers/[id] failed:", err);
@@ -54,7 +58,9 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    await db.delete(customers).where(eq(customers.id, Number(params.id)));
+    const id = parseIdParam(params.id);
+    if (id === null) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
+    await db.delete(customers).where(eq(customers.id, id));
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("DELETE /customers/[id] failed:", err);

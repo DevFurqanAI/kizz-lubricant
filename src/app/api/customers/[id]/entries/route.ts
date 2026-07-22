@@ -6,6 +6,7 @@ import { customerEntries } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { recalcBalances } from "@/lib/ledger";
 import { validateLedgerEntry, hasErrors, firstError } from "@/lib/validation";
+import { parseIdParam } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const customerId = Number(params.id);
+    const customerId = parseIdParam(params.id);
+    if (customerId === null) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
     const body = await req.json();
     const { date, product, packing, unit, qty, rate, debit, credit, account } = body;
 

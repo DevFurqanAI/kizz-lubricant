@@ -57,3 +57,14 @@ export function parseListParams(
   if (amountMin !== null && amountMax !== null && amountMin > amountMax) [amountMin, amountMax] = [amountMax, amountMin];
   return { search, page, limit, offset: (page - 1) * limit, sort, dir, from, to, amountMin, amountMax };
 }
+
+/**
+ * Parse a route param (e.g. `params.id`) as a positive integer. A malformed
+ * id ("abc", "1.5", empty) returns null so the caller can respond 400 —
+ * otherwise `Number("abc")` becomes NaN, reaches the DB driver, and surfaces
+ * as an unrelated 500.
+ */
+export function parseIdParam(raw: string | undefined): number | null {
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
