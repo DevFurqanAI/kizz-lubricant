@@ -15,6 +15,7 @@ import {
   TrendingDown,
   Receipt,
   Wallet,
+  ArrowLeftRight,
   BarChart3,
   LogOut,
   Search,
@@ -28,6 +29,7 @@ const NAV = [
   { href: "/dashboard/purchasing", label: "Purchasing", icon: TrendingDown },
   { href: "/dashboard/expenses", label: "Expenses", icon: Receipt },
   { href: "/dashboard/salary", label: "Salary", icon: Wallet },
+  { href: "/dashboard/payments", label: "Payments", icon: ArrowLeftRight },
   { href: "/dashboard/pnl", label: "Profit & Loss", icon: BarChart3 },
 ];
 
