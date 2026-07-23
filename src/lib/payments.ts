@@ -94,6 +94,14 @@ export async function postPaymentTransaction(input: PostPaymentInput) {
     if (mirrorId) await db.delete(customerEntries).where(eq(customerEntries.id, mirrorId)).catch((cleanupErr) => console.error("rollback cleanup failed:", cleanupErr));
     // Deleting the transaction cascades its ledger_entries (onDelete: "cascade").
     await db.delete(transactions).where(eq(transactions.id, txn.id)).catch((cleanupErr) => console.error("rollback cleanup failed:", cleanupErr));
+    // The recalcs above already wrote new running balances onto the OTHER
+    // still-existing rows for these accounts before the failure occurred.
+    // Deleting our rows doesn't undo that, so recompute again here — same
+    // pattern as POST /api/sales' catch block. Best-effort: a recompute
+    // failure here shouldn't mask the original error being rethrown.
+    await recalcAccountBalances(input.partyAccountId).catch(() => {});
+    await recalcAccountBalances(input.partnerAccountId).catch(() => {});
+    if (input.customerId) await recalcBalances(input.customerId).catch(() => {});
     throw err;
   }
 
