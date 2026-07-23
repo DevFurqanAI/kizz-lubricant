@@ -26,7 +26,13 @@ export async function findOrCreatePartyAccount(
       return { accountId: customerMatch.accountId, customerId: customerMatch.id };
     }
     const [acct] = await db.insert(accounts).values({ name: trimmed, type: "party" }).returning({ id: accounts.id });
-    await db.update(customers).set({ accountId: acct.id }).where(eq(customers.id, customerMatch.id));
+    try {
+      await db.update(customers).set({ accountId: acct.id }).where(eq(customers.id, customerMatch.id));
+    } catch (err) {
+      // Clean up the orphaned account row on failure (best-effort)
+      await db.delete(accounts).where(eq(accounts.id, acct.id)).catch(() => {});
+      throw err;
+    }
     return { accountId: acct.id, customerId: customerMatch.id };
   }
 
