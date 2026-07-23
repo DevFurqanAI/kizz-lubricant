@@ -91,9 +91,9 @@ export async function postPaymentTransaction(input: PostPaymentInput) {
     }
   } catch (err) {
     console.error("postPaymentTransaction failed, rolling back:", err);
-    if (mirrorId) await db.delete(customerEntries).where(eq(customerEntries.id, mirrorId)).catch(() => {});
+    if (mirrorId) await db.delete(customerEntries).where(eq(customerEntries.id, mirrorId)).catch((cleanupErr) => console.error("rollback cleanup failed:", cleanupErr));
     // Deleting the transaction cascades its ledger_entries (onDelete: "cascade").
-    await db.delete(transactions).where(eq(transactions.id, txn.id)).catch(() => {});
+    await db.delete(transactions).where(eq(transactions.id, txn.id)).catch((cleanupErr) => console.error("rollback cleanup failed:", cleanupErr));
     throw err;
   }
 
