@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/neon-http";
 import { eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import {
-  users, customers, customerEntries, sales, purchasing, expenses, salary,
+  users, customers, customerEntries, sales, purchasing, expenses, salary, accounts,
 } from "../src/db/schema";
 
 // ── Dev credentials (change in .env for production) ─────────────────
@@ -38,6 +38,20 @@ async function main() {
   } else {
     await db.insert(users).values({ name: "Admin", email: ADMIN_EMAIL.toLowerCase(), passwordHash, role: "admin" });
     console.log(`✔ Admin created: ${ADMIN_EMAIL}`);
+  }
+
+  // ── 1.5 Partner accounts (owners) ──────────────────────────────────────
+  // Idempotent and placed before the "already seeded" early-return so it
+  // still runs against a database that already has customer/sales data.
+  const existingPartners = await db.select().from(accounts).where(eq(accounts.type, "partner"));
+  if (existingPartners.length === 0) {
+    await db.insert(accounts).values([
+      { name: "Mubashir", type: "partner" },
+      { name: "Naqi", type: "partner" },
+    ]);
+    console.log("✔ Partner accounts seeded: Mubashir, Naqi");
+  } else {
+    console.log("ℹ  Partner accounts already present — skipping.");
   }
 
   // Check if already seeded (skip data if customers exist)

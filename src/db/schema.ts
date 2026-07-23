@@ -26,6 +26,10 @@ export const customers = pgTable("customers", {
   name: varchar("name", { length: 200 }).notNull(),
   accountTitle: varchar("account_title", { length: 200 }),
   owner: varchar("owner", { length: 200 }),
+  // Lazily linked the first time this customer appears in a Payment — see
+  // src/lib/accounts.ts. Null for customers who've never been paid via the
+  // Payments page.
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "set null" }),
   cnic: varchar("cnic", { length: 30 }),
   address: varchar("address", { length: 300 }),
   phone: varchar("phone", { length: 50 }),
@@ -165,6 +169,11 @@ export const transactions = pgTable("transactions", {
   partyAccountId: integer("party_account_id").references(() => accounts.id, { onDelete: "set null" }),
   partnerAccountId: integer("partner_account_id").references(() => accounts.id, { onDelete: "set null" }),
   counterAccountId: integer("counter_account_id").references(() => accounts.id, { onDelete: "set null" }), // transfer "to"
+  // Set only for purchaser_receipt / supplier_payment transactions whose
+  // party is a linked Customer — points at the mirrored row this payment
+  // created in customer_entries, so delete/edit can keep both in sync (same
+  // pattern as sales.ledgerEntryId).
+  mirroredEntryId: integer("mirrored_entry_id").references(() => customerEntries.id, { onDelete: "set null" }),
   // Line-item detail (sales / purchases)
   product: varchar("product", { length: 200 }),
   packing: varchar("packing", { length: 100 }),
