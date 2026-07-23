@@ -158,6 +158,28 @@ export function validateSalary(b: Record<string, unknown>, mode: Mode = "create"
   return e;
 }
 
+function checkDirection(v: unknown): string | null {
+  return v === "received" || v === "sent" ? null : "Direction must be 'received' or 'sent'.";
+}
+
+function checkPositiveMoney(v: unknown, label: string): string | null {
+  const err = checkMoney(v, label, { required: true });
+  if (err) return err;
+  if (Number(v) <= 0) return `${label} must be greater than 0.`;
+  return null;
+}
+
+export function validatePayment(b: Record<string, unknown>, mode: Mode = "create"): FieldErrors {
+  const e: FieldErrors = {};
+  if (active(b, "date", mode)) set(e, "date", checkDate(b.date, { required: true }));
+  if (active(b, "direction", mode)) set(e, "direction", checkDirection(b.direction));
+  if (active(b, "partyName", mode)) set(e, "partyName", checkRequiredText(b.partyName, "Party", 200));
+  if (active(b, "partnerName", mode)) set(e, "partnerName", checkRequiredText(b.partnerName, "Owner", 200));
+  if (active(b, "amount", mode)) set(e, "amount", checkPositiveMoney(b.amount, "Amount"));
+  if (active(b, "note", mode)) set(e, "note", checkOptionalText(b.note, "Note", 300));
+  return e;
+}
+
 export function validateCustomer(b: Record<string, unknown>, mode: Mode = "create"): FieldErrors {
   const e: FieldErrors = {};
   if (active(b, "name", mode)) set(e, "name", checkRequiredText(b.name, "Name", 200));
