@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
-import { customers } from "@/db/schema";
-import { asc, ilike, or, sql } from "drizzle-orm";
+import { customers, accounts } from "@/db/schema";
+import { and, asc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { parseListParams } from "@/lib/pagination";
 import { validateCustomer, hasErrors, firstError } from "@/lib/validation";
 
@@ -70,6 +70,22 @@ export async function POST(req: NextRequest) {
       whatsapp: body.whatsapp ?? null,
       email: body.email ?? null,
     }).returning();
+
+    // Re-link an orphaned party account left behind by a previously deleted
+    // customer of the same name (customers.accountId is set-null on delete),
+    // so their old payment history reappears instead of staying invisible.
+    // "Unclaimed" = no *other* live customer already points at it.
+    const [orphan] = await db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .leftJoin(customers, eq(customers.accountId, accounts.id))
+      .where(and(eq(accounts.type, "party"), sql`lower(${accounts.name}) = lower(${row.name})`, isNull(customers.id)))
+      .limit(1);
+    if (orphan) {
+      await db.update(customers).set({ accountId: orphan.id }).where(eq(customers.id, row.id));
+      row.accountId = orphan.id;
+    }
+
     return NextResponse.json(row, { status: 201 });
   } catch (err) {
     console.error("POST /customers failed:", err);
