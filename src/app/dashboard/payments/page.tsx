@@ -4,6 +4,8 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { formatMoney, fmtDate } from "@/lib/utils";
 import { createLocalCache } from "@/lib/localCache";
+import { customerDetailCache, customerListCache } from "@/lib/customercache";
+import { dashboardCache } from "@/lib/dashboard-cache";
 import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
 import { Pagination } from "@/components/pagination";
@@ -175,6 +177,9 @@ export default function PaymentsPage() {
       setAddingOwner(false);
       setShowForm(false);
       paymentsCache.clear();
+      customerDetailCache.clear();
+      customerListCache.clear();
+      dashboardCache.clear();
       setPage(1);
       const { from, to } = resolveDateRange(dateRange);
       load(direction, search, 1, sort, from, to, amountMin, amountMax, partnerId);
@@ -195,6 +200,9 @@ export default function PaymentsPage() {
     try {
       await api.del(`/payments/${id}`);
       paymentsCache.clear();
+      customerDetailCache.clear();
+      customerListCache.clear();
+      dashboardCache.clear();
       toast.success("Payment deleted");
     } catch {
       setRows(prevRows); setTotal(prevTotal); setCount(prevCount);
