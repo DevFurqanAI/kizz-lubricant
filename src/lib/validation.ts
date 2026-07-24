@@ -131,6 +131,18 @@ export function checkSaleKgUnit(v: unknown): string | null {
   return ["Kg", "L"].includes(String(v).trim()) ? null : "Unit must be Kg or L.";
 }
 
+/**
+ * Unit only means something alongside a value: default to "Kg" when a
+ * weight/volume is given with no explicit unit, and clear the unit when
+ * there's no value. Shared by POST /api/sales and PATCH /api/sales/[id] so
+ * the rule can't drift between the two.
+ */
+export function deriveSaleKg(saleKg: unknown, saleKgUnit: unknown): { saleKg: string | null; saleKgUnit: string | null } {
+  const kg = saleKg === null || saleKg === undefined || saleKg === "" ? null : String(saleKg);
+  const unit = kg ? (saleKgUnit ? String(saleKgUnit) : "Kg") : null;
+  return { saleKg: kg, saleKgUnit: unit };
+}
+
 export function validateLedgerEntry(b: Record<string, unknown>, mode: Mode = "create"): FieldErrors {
   const e: FieldErrors = {};
   if (active(b, "date", mode)) set(e, "date", checkDate(b.date, { required: true }));

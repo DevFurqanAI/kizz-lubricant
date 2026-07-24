@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { sales, customerEntries } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { recalcBalances } from "@/lib/ledger";
-import { validateSale, hasErrors, firstError, formatMoney } from "@/lib/validation";
+import { validateSale, hasErrors, firstError, formatMoney, deriveSaleKg } from "@/lib/validation";
 import { parseIdParam } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
@@ -67,9 +67,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if ("rate" in b) update.rate = num(b.rate);
     if ("amount" in b) update.amount = formatMoney(b.amount);
     if ("saleKg" in b) {
-      update.saleKg = num(b.saleKg);
-      // Keep the unit consistent with the value: set when there's a weight, clear otherwise.
-      update.saleKgUnit = update.saleKg ? (b.saleKgUnit ? String(b.saleKgUnit) : "Kg") : null;
+      const derived = deriveSaleKg(b.saleKg, b.saleKgUnit);
+      update.saleKg = derived.saleKg;
+      update.saleKgUnit = derived.saleKgUnit;
     }
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ error: "No editable fields provided." }, { status: 400 });

@@ -6,7 +6,7 @@ import { sales, customers, customerEntries } from "@/db/schema";
 import { asc, desc, eq, sql, ilike, and, gte, lte } from "drizzle-orm";
 import { parseListParams } from "@/lib/pagination";
 import { recalcBalances } from "@/lib/ledger";
-import { validateSale, hasErrors, firstError } from "@/lib/validation";
+import { validateSale, hasErrors, firstError, deriveSaleKg } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -95,9 +95,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: firstError(errors), fields: errors }, { status: 400 });
     }
     const custId = customerId ? Number(customerId) : null;
-    // Unit only means something alongside a value; drop a stray unit otherwise.
-    const kg = num(saleKg);
-    const kgUnit = kg ? (saleKgUnit ? String(saleKgUnit) : "Kg") : null;
+    const { saleKg: kg, saleKgUnit: kgUnit } = deriveSaleKg(saleKg, saleKgUnit);
 
     // On-spot payment: what the customer handed over at the time of sale. Only
     // meaningful against a real customer's ledger (a walk-in sale is cash by
