@@ -295,11 +295,14 @@ export default function PaymentsPage() {
   };
 
   const saveEdit = async (id: number) => {
+    const payload = { date: editForm.date, amount: Number(editForm.amount), note: editForm.note };
+    const errs = validatePayment(payload, "update");
+    if (hasErrors(errs)) { toast.error(firstError(errs)!); return; }
     const prevRows = rows;
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, date: editForm.date, amount: editForm.amount, note: editForm.note || null } : r)));
     setEditId(null);
     try {
-      await api.patch(`/payments/${id}`, { date: editForm.date, amount: Number(editForm.amount), note: editForm.note });
+      await api.patch(`/payments/${id}`, payload);
       paymentsCache.clear();
       customerDetailCache.clear();
       customerListCache.clear();
