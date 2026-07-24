@@ -6,6 +6,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { api, fetchAllRows } from "@/lib/api";
 import { formatMoney, fmtDate } from "@/lib/utils";
 import { createLocalCache } from "@/lib/localCache"
+import { dashboardCache } from "@/lib/dashboard-cache";
 import { saveOrShareBlob } from "@/lib/file-download";
 import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
@@ -167,6 +168,7 @@ export default function PurchasingPage() {
       setForm({ date: new Date().toISOString().slice(0,10), detail: "", amount: "" });
       setShowForm(false);
       purchasingCache.clear();
+      dashboardCache.clear();
       setPage(1);
       const { from, to } = resolveDateRange(dateRange);
       load(search, 1, sort, from, to, amountMin, amountMax);
@@ -185,6 +187,7 @@ export default function PurchasingPage() {
     try {
       await api.del(`/purchasing/${id}`);
       purchasingCache.clear();
+      dashboardCache.clear();
       const newCount = Math.max(0, prevCount - 1);
       const maxPage = Math.max(1, Math.ceil(newCount / PAGE_SIZE));
       const nextPage = Math.min(page, maxPage);
@@ -205,6 +208,7 @@ export default function PurchasingPage() {
     try {
       await api.patch(`/purchasing/${id}`, { ...editForm, amount: Number(editForm.amount) });
       purchasingCache.clear();
+      dashboardCache.clear();
       const { from, to } = resolveDateRange(dateRange);
       load(search, page, sort, from, to, amountMin, amountMax, { silent: true });
       toast.success("Purchase updated");

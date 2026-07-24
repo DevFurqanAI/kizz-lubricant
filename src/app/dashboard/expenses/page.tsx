@@ -5,6 +5,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { api, fetchAllRows } from "@/lib/api";
 import { formatMoney, fmtDate } from "@/lib/utils";
 import { getCache, setCache, clearCache } from "@/lib/expenses-cache";
+import { dashboardCache } from "@/lib/dashboard-cache";
 import { saveOrShareBlob } from "@/lib/file-download";
 import { Plus, Receipt, Trash2, X, Pencil, Check, FileSpreadsheet } from "lucide-react";
 import { useToast } from "@/components/toast";
@@ -162,6 +163,7 @@ export default function ExpensesPage() {
       setForm({ date: new Date().toISOString().slice(0, 10), detail: "", amount: "" });
       setShowForm(false);
       clearCache();
+      dashboardCache.clear();
       setPage(1);
       const { from, to } = resolveDateRange(dateRange);
       load(search, 1, sort, from, to, amountMin, amountMax);
@@ -186,6 +188,7 @@ export default function ExpensesPage() {
     try {
       await api.del(`/expenses/${id}`);
       clearCache();
+      dashboardCache.clear();
       // Deleting the last row on the last page must clamp back a page —
       // otherwise the refetch asks for a page that no longer exists and
       // renders an empty state even though earlier pages still have rows.
@@ -227,6 +230,7 @@ export default function ExpensesPage() {
       );
       await api.patch(`/expenses/${id}`, { ...editForm, amount: Number(editForm.amount) });
       clearCache();
+      dashboardCache.clear();
       cancelEdit();
       const { from, to } = resolveDateRange(dateRange);
       load(search, page, sort, from, to, amountMin, amountMax, { silent: true }); // reconcile total + ordering from server

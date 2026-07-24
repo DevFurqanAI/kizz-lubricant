@@ -7,6 +7,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { api, fetchAllRows } from "@/lib/api";
 import { formatMoney, toNum, fmtDate } from "@/lib/utils";
 import { createLocalCache } from "@/lib/localCache";
+import { dashboardCache } from "@/lib/dashboard-cache";
 import { saveOrShareBlob } from "@/lib/file-download";
 import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
@@ -244,6 +245,7 @@ export default function SalaryPage() {
       setForm({ date: new Date().toISOString().slice(0, 10), employee: "", amount: "", account: "" });
       setShowForm(false);
       salaryCache.clear();
+      dashboardCache.clear();
       setPage(1);
       const { from, to } = resolveDateRange(dateRange);
       load(search, 1, dir, from, to, amountMin, amountMax, employee, account);
@@ -262,6 +264,7 @@ export default function SalaryPage() {
     try {
       await api.del(`/salary/${id}`);
       salaryCache.clear();
+      dashboardCache.clear();
       const newCount = Math.max(0, prevCount - 1);
       const maxPage = Math.max(1, Math.ceil(newCount / PAGE_SIZE));
       const nextPage = Math.min(page, maxPage);
@@ -280,7 +283,7 @@ export default function SalaryPage() {
     const prevRows = rows;
     setRows(rs => rs.map(r => r.id === id ? { ...r, ...editForm } : r));
     setEditId(null);
-    try { await api.patch(`/salary/${id}`, { ...editForm, amount: Number(editForm.amount) }); salaryCache.clear(); const { from, to } = resolveDateRange(dateRange); load(search, page, dir, from, to, amountMin, amountMax, employee, account, { silent: true }); toast.success("Payment updated"); }
+    try { await api.patch(`/salary/${id}`, { ...editForm, amount: Number(editForm.amount) }); salaryCache.clear(); dashboardCache.clear(); const { from, to } = resolveDateRange(dateRange); load(search, page, dir, from, to, amountMin, amountMax, employee, account, { silent: true }); toast.success("Payment updated"); }
     catch { setRows(prevRows); toast.error("Couldn't update payment"); }
   };
 

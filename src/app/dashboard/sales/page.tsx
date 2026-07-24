@@ -5,6 +5,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { api, fetchAllRows } from "@/lib/api";
 import { formatMoney, toNum, fmtDate } from "@/lib/utils";
 import { createLocalCache } from "@/lib/localCache";
+import { dashboardCache } from "@/lib/dashboard-cache";
 import { customerDetailCache, customerListCache } from "@/lib/customercache";
 import { saveOrShareBlob } from "@/lib/file-download";
 import { useToast } from "@/components/toast";
@@ -249,6 +250,7 @@ export default function SalesPage() {
       autoAmt.current = "";
       setShowForm(false);
       salesCache.clear();
+      dashboardCache.clear();
       if (months.length) loadMonths();
       setPage(1);
       const { from, to } = resolveDateRange(dateRange);
@@ -274,6 +276,7 @@ export default function SalesPage() {
       await api.del(`/sales/${id}`);
       if (del?.customerId) { customerDetailCache.delete(String(del.customerId)); customerListCache.clear(); }
       salesCache.clear();
+      dashboardCache.clear();
       const newCount = Math.max(0, prevCount - 1);
       const maxPage = Math.max(1, Math.ceil(newCount / PAGE_SIZE));
       const nextPage = Math.min(page, maxPage);
@@ -315,6 +318,7 @@ export default function SalesPage() {
       await api.patch(`/sales/${id}`, { ...editForm, packing: editForm.packing || null, unit: editForm.unit || null, qty: editForm.qty ? Number(editForm.qty) : null, rate: editForm.rate ? Number(editForm.rate) : null, amount: Number(editForm.amount), saleKg: editForm.saleKg ? Number(editForm.saleKg) : null, saleKgUnit: editForm.saleKg ? editForm.saleKgUnit : null });
       if (edited?.customerId) { customerDetailCache.delete(String(edited.customerId)); customerListCache.clear(); }
       salesCache.clear();
+      dashboardCache.clear();
       if (months.length) loadMonths();
       const { from, to } = resolveDateRange(dateRange);
       load(search, page, sort, from, to, amountMin, amountMax, customerId, { silent: true });
