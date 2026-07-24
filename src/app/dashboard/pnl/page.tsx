@@ -68,7 +68,7 @@ export default function PnlPage() {
     if (!data || filteredRows.length === 0) return;
     setExporting(true);
     try {
-      const { buildPnlXlsx } = await import("@/lib/reports-xlsx");
+      const { buildPnlXlsx } = await import("@/lib/excel");
       const blob = await buildPnlXlsx(filteredRows, g, `Range: ${describeRange(range)}`);
       const rangeSuffix = (() => {
         if (range.preset !== "custom") return range.preset;

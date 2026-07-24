@@ -273,7 +273,7 @@ export default function CustomerLedgerPage() {
     if (!customer) return;
     setExporting(true);
     try {
-      const { buildLedgerBlob } = await import("@/lib/ledger-xlsx");
+      const { buildLedgerBlob } = await import("@/lib/excel");
       const blob = await buildLedgerBlob(customer);
       const safeName = customer.name.replace(/[^a-z0-9]+/gi, "_");
       const filename = `${safeName}_ledger_${new Date().toISOString().slice(0, 10)}.xlsx`;

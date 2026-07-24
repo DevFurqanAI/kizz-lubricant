@@ -219,7 +219,7 @@ export default function CustomersPage() {
     setExporting(true);
     try {
       const all = await fetchAllRows<CustomerWithBalance>("/customers", { search });
-      const { buildCustomersXlsx } = await import("@/lib/reports-xlsx");
+      const { buildCustomersXlsx } = await import("@/lib/excel");
       const blob = await buildCustomersXlsx(all, search ? `Filtered: "${search}"` : undefined);
       await saveOrShareBlob(blob, `customers_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch {

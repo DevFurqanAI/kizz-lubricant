@@ -337,7 +337,7 @@ export default function SalesPage() {
       if (amountMax) params.amountMax = amountMax;
       if (customerId) params.customerId = customerId;
       const all = await fetchAllRows<SaleRow>("/sales", params);
-      const { buildSalesXlsx } = await import("@/lib/reports-xlsx");
+      const { buildSalesXlsx } = await import("@/lib/excel");
       const blob = await buildSalesXlsx(all, search ? `Filtered: "${search}"` : undefined);
       await saveOrShareBlob(blob, `sales_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch {

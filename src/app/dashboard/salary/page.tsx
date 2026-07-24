@@ -301,7 +301,7 @@ export default function SalaryPage() {
       if (employee) params.employee = employee;
       if (account) params.account = account;
       const all = await fetchAllRows<Row>("/salary", params);
-      const { buildSalaryXlsx } = await import("@/lib/reports-xlsx");
+      const { buildSalaryXlsx } = await import("@/lib/excel");
       const blob = await buildSalaryXlsx(all, search ? `Filtered: "${search}"` : undefined);
       await saveOrShareBlob(blob, `salary_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch {

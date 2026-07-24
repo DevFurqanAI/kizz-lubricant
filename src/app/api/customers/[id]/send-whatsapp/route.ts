@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
 import { customers, customerEntries } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
-import { buildLedgerBlob, XLSX_MIME } from "@/lib/ledger-xlsx";
+import { buildLedgerBlob, XLSX_MIME } from "@/lib/excel";
 import { uploadMedia, sendDocument } from "@/lib/wasender";
 import { formatMoney, toNum, waNumber } from "@/lib/utils";
 import type { FullCustomer } from "@/lib/customercache";

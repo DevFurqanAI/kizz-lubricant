@@ -225,7 +225,7 @@ export default function PurchasingPage() {
       if (amountMin) params.amountMin = amountMin;
       if (amountMax) params.amountMax = amountMax;
       const all = await fetchAllRows<Row>("/purchasing", params);
-      const { buildPurchasingXlsx } = await import("@/lib/reports-xlsx");
+      const { buildPurchasingXlsx } = await import("@/lib/excel");
       const blob = await buildPurchasingXlsx(all, search ? `Filtered: "${search}"` : undefined);
       await saveOrShareBlob(blob, `purchasing_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch {

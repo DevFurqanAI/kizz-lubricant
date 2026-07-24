@@ -256,7 +256,7 @@ export default function ExpensesPage() {
       if (amountMin) params.amountMin = amountMin;
       if (amountMax) params.amountMax = amountMax;
       const all = await fetchAllRows<Row>("/expenses", params);
-      const { buildExpensesXlsx } = await import("@/lib/reports-xlsx");
+      const { buildExpensesXlsx } = await import("@/lib/excel");
       const blob = await buildExpensesXlsx(all, search ? `Filtered: "${search}"` : undefined);
       await saveOrShareBlob(blob, `expenses_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch {
