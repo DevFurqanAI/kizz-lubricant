@@ -475,3 +475,26 @@ export async function buildPnlXlsx(rows: PnlMonthRow[], grand: PnlGrand, filterN
     rows,
   });
 }
+
+export type PaymentsReportRow = { date: string; partyName: string; partnerName: string; amount: string; note: string | null };
+
+export async function buildPaymentsXlsx(
+  rows: PaymentsReportRow[],
+  direction: "received" | "sent",
+  filterNote?: string,
+): Promise<Blob> {
+  return buildReportBlob<PaymentsReportRow>({
+    subtitle: direction === "received" ? "PAYMENTS RECEIVED REPORT" : "PAYMENTS SENT REPORT",
+    sheetName: direction === "received" ? "Payments Received" : "Payments Sent",
+    filterNote,
+    columns: [
+      { header: "Date", value: (r) => fmtDate(r.date) },
+      { header: "Party", minWidth: 18, value: (r) => r.partyName },
+      { header: "Owner", minWidth: 14, value: (r) => r.partnerName },
+      { header: "Amount", align: "right", numFmt: NUM_FMT, value: (r) => toNum(r.amount) },
+      { header: "Note", minWidth: 18, maxWidth: 30, value: (r) => r.note || "" },
+    ],
+    totals: [{ col: 3, value: rows.reduce((a, r) => a + toNum(r.amount), 0) }],
+    rows,
+  });
+}

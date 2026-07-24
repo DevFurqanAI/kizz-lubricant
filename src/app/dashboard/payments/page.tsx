@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, fetchAllRows } from "@/lib/api";
 import { formatMoney, fmtDate } from "@/lib/utils";
 import { createLocalCache } from "@/lib/localCache";
 import { customerDetailCache, customerListCache } from "@/lib/customercache";
@@ -18,7 +18,8 @@ import { FilterBar } from "@/components/filter-bar";
 import { resolveDateRange, encodeDateRange, decodeDateRange, type DateRangeSelection } from "@/lib/date-range";
 import { buildQueryString } from "@/lib/url-filter-sync";
 import { useContentFadeKey } from "@/lib/use-fade-key";
-import { ArrowLeftRight, Trash2, Pencil, Check, X } from "lucide-react";
+import { saveOrShareBlob } from "@/lib/file-download";
+import { ArrowLeftRight, Trash2, Pencil, Check, X, FileSpreadsheet } from "lucide-react";
 import { validatePayment, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 type Direction = "received" | "sent";
@@ -111,6 +112,7 @@ export default function PaymentsPage() {
   const [addingOwner, setAddingOwner] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<EditForm>({ date: "", amount: "", note: "" });
+  const [exporting, setExporting] = useState(false);
   const emptyForm = { date: new Date().toISOString().slice(0, 10), partyName: "", partnerName: "", amount: "", note: "" };
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState<FieldErrors>({});
@@ -266,6 +268,27 @@ export default function PaymentsPage() {
     }
   };
 
+  const exportXlsx = async () => {
+    setExporting(true);
+    try {
+      const { from, to } = resolveDateRange(dateRange);
+      const params: Record<string, string> = { direction, search, sort: sort.col, dir: sort.dir };
+      if (from) params.from = from;
+      if (to) params.to = to;
+      if (amountMin) params.amountMin = amountMin;
+      if (amountMax) params.amountMax = amountMax;
+      if (partnerId) params.partnerId = partnerId;
+      const all = await fetchAllRows<Row>("/payments", params);
+      const { buildPaymentsXlsx } = await import("@/lib/excel");
+      const blob = await buildPaymentsXlsx(all, direction, search ? `Filtered: "${search}"` : undefined);
+      await saveOrShareBlob(blob, `payments_${direction}_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch {
+      toast.error("Couldn't export payments");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const startEdit = (r: Row) => {
     setEditId(r.id);
     setEditForm({ date: r.date.slice(0, 10), amount: r.amount, note: r.note ?? "" });
@@ -304,7 +327,13 @@ export default function PaymentsPage() {
           </div>
           <p className="mt-1 text-sm text-muted">Who sent or received money, and which owner handled it.</p>
         </div>
-        <button onClick={() => setShowForm((s) => !s)} className="btn-primary">+ Add Payment</button>
+        <div className="flex items-center gap-2">
+          <button onClick={exportXlsx} disabled={exporting || rows.length === 0} className="btn-secondary">
+            <FileSpreadsheet className="w-4 h-4" strokeWidth={2} />
+            {exporting ? "Exporting…" : "Export Excel"}
+          </button>
+          <button onClick={() => setShowForm((s) => !s)} className="btn-primary">+ Add Payment</button>
+        </div>
       </div>
 
       <div className="flex gap-2 border-b border-line">
