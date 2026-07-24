@@ -9,6 +9,12 @@ import { and, eq, sql } from "drizzle-orm";
  * matches an existing Customer, that customer is auto-linked via
  * `customers.account_id` (created the first time they appear in a payment)
  * so the payment can mirror into their ledger — see src/lib/payments.ts.
+ *
+ * `customers.name` and `accounts (name, type)` both carry a case-insensitive
+ * unique index (see src/db/schema.ts) — concurrent calls for the same new
+ * name race on the DB's unique constraint instead of the app, so at most one
+ * row is ever created; the loser's INSERT returns no row and falls back to
+ * SELECT-ing the winner.
  */
 export async function findOrCreatePartyAccount(
   name: string,
@@ -25,25 +31,45 @@ export async function findOrCreatePartyAccount(
     if (customerMatch.accountId) {
       return { accountId: customerMatch.accountId, customerId: customerMatch.id };
     }
-    const [acct] = await db.insert(accounts).values({ name: trimmed, type: "party" }).returning({ id: accounts.id });
+    const acctRows = await db.execute(sql`
+      INSERT INTO accounts (name, type) VALUES (${trimmed}, 'party')
+      ON CONFLICT (lower(name), type) DO NOTHING
+      RETURNING id
+    `);
+    let acct = (acctRows.rows as { id: number }[])[0];
+    if (!acct) {
+      [acct] = await db
+        .select({ id: accounts.id })
+        .from(accounts)
+        .where(and(eq(accounts.type, "party"), sql`lower(${accounts.name}) = lower(${trimmed})`))
+        .limit(1);
+    }
     try {
       await db.update(customers).set({ accountId: acct.id }).where(eq(customers.id, customerMatch.id));
     } catch (err) {
-      // Clean up the orphaned account row on failure (best-effort)
+      // Clean up the orphaned account row on failure (best-effort). Only safe
+      // to delete if we're the one who created it, but a delete on a row now
+      // referenced elsewhere is a no-op failure we swallow — never delete
+      // another customer's already-linked account.
       await db.delete(accounts).where(eq(accounts.id, acct.id)).catch(() => {});
       throw err;
     }
     return { accountId: acct.id, customerId: customerMatch.id };
   }
 
-  const [partyMatch] = await db
-    .select({ id: accounts.id })
-    .from(accounts)
-    .where(and(eq(accounts.type, "party"), sql`lower(${accounts.name}) = lower(${trimmed})`))
-    .limit(1);
-  if (partyMatch) return { accountId: partyMatch.id, customerId: null };
-
-  const [created] = await db.insert(accounts).values({ name: trimmed, type: "party" }).returning({ id: accounts.id });
+  const createdRows = await db.execute(sql`
+    INSERT INTO accounts (name, type) VALUES (${trimmed}, 'party')
+    ON CONFLICT (lower(name), type) DO NOTHING
+    RETURNING id
+  `);
+  let created = (createdRows.rows as { id: number }[])[0];
+  if (!created) {
+    [created] = await db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(and(eq(accounts.type, "party"), sql`lower(${accounts.name}) = lower(${trimmed})`))
+      .limit(1);
+  }
   return { accountId: created.id, customerId: null };
 }
 
@@ -60,6 +86,19 @@ export async function findOrCreatePartnerAccount(name: string): Promise<number> 
     .where(and(eq(accounts.type, "partner"), sql`lower(${accounts.name}) = lower(${trimmed})`))
     .limit(1);
   if (match) return match.id;
-  const [created] = await db.insert(accounts).values({ name: trimmed, type: "partner" }).returning({ id: accounts.id });
+
+  const createdRows = await db.execute(sql`
+    INSERT INTO accounts (name, type) VALUES (${trimmed}, 'partner')
+    ON CONFLICT (lower(name), type) DO NOTHING
+    RETURNING id
+  `);
+  let created = (createdRows.rows as { id: number }[])[0];
+  if (!created) {
+    [created] = await db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(and(eq(accounts.type, "partner"), sql`lower(${accounts.name}) = lower(${trimmed})`))
+      .limit(1);
+  }
   return created.id;
 }
