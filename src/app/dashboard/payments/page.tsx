@@ -18,18 +18,72 @@ import { FilterBar } from "@/components/filter-bar";
 import { resolveDateRange, encodeDateRange, decodeDateRange, type DateRangeSelection } from "@/lib/date-range";
 import { buildQueryString } from "@/lib/url-filter-sync";
 import { useContentFadeKey } from "@/lib/use-fade-key";
-import { ArrowLeftRight, Trash2 } from "lucide-react";
+import { ArrowLeftRight, Trash2, Pencil, Check, X } from "lucide-react";
 import { validatePayment, hasErrors, firstError, type FieldErrors } from "@/lib/validation";
 
 type Direction = "received" | "sent";
 type Row = { id: number; date: string; amount: string; note: string | null; partyName: string; partnerName: string };
 type PaymentsData = { rows: Row[]; total: number; count: number };
 type Partner = { id: number; name: string };
+type EditForm = { date: string; amount: string; note: string };
 
 const PAGE_SIZE = 50;
 const paymentsCache = createLocalCache<PaymentsData>("payments", { ttlMs: 5 * 60_000 });
 const keyFor = (dir: Direction, q: string, s: Sort, p: number, from: string | null, to: string | null, amountMin: string, amountMax: string, partnerId: string) =>
   `${dir}|${q}|${s.col}|${s.dir}|p${p}|${from ?? ""}|${to ?? ""}|${amountMin}|${amountMax}|${partnerId}`;
+
+function EditRowInputs({
+  editForm,
+  setEditForm,
+}: {
+  editForm: EditForm;
+  setEditForm: React.Dispatch<React.SetStateAction<EditForm>>;
+}) {
+  return (
+    <>
+      <input
+        type="date"
+        value={editForm.date}
+        onChange={(e) => setEditForm((f) => ({ ...f, date: e.target.value }))}
+        className="input px-2 py-1.5 text-xs w-full sm:w-36"
+      />
+      <input
+        type="number"
+        value={editForm.amount}
+        onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
+        placeholder="Amount"
+        className="input px-2 py-1.5 text-sm w-full sm:w-32"
+      />
+      <input
+        value={editForm.note}
+        onChange={(e) => setEditForm((f) => ({ ...f, note: e.target.value }))}
+        placeholder="Note"
+        className="input px-2 py-1.5 text-sm w-full sm:flex-1 sm:min-w-0"
+      />
+    </>
+  );
+}
+
+function RowActions({
+  r,
+  startEdit,
+  handleDelete,
+}: {
+  r: Row;
+  startEdit: (r: Row) => void;
+  handleDelete: (id: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <button onClick={() => startEdit(r)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-accent hover:bg-accent-tint transition-colors" aria-label="Edit payment">
+        <Pencil className="w-4 h-4" strokeWidth={2} />
+      </button>
+      <button onClick={() => handleDelete(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-danger hover:bg-danger-tint transition-colors" aria-label="Delete payment">
+        <Trash2 className="w-4 h-4" strokeWidth={2} />
+      </button>
+    </div>
+  );
+}
 
 export default function PaymentsPage() {
   const initSort: Sort = { col: "date", dir: "desc" };
@@ -55,6 +109,8 @@ export default function PaymentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [addingOwner, setAddingOwner] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState<EditForm>({ date: "", amount: "", note: "" });
   const emptyForm = { date: new Date().toISOString().slice(0, 10), partyName: "", partnerName: "", amount: "", note: "" };
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState<FieldErrors>({});
@@ -210,6 +266,30 @@ export default function PaymentsPage() {
     }
   };
 
+  const startEdit = (r: Row) => {
+    setEditId(r.id);
+    setEditForm({ date: r.date.slice(0, 10), amount: r.amount, note: r.note ?? "" });
+  };
+
+  const saveEdit = async (id: number) => {
+    const prevRows = rows;
+    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, date: editForm.date, amount: editForm.amount, note: editForm.note || null } : r)));
+    setEditId(null);
+    try {
+      await api.patch(`/payments/${id}`, { date: editForm.date, amount: Number(editForm.amount), note: editForm.note });
+      paymentsCache.clear();
+      customerDetailCache.clear();
+      customerListCache.clear();
+      dashboardCache.clear();
+      const { from, to } = resolveDateRange(dateRange);
+      load(direction, search, page, sort, from, to, amountMin, amountMax, partnerId, { silent: true });
+      toast.success("Payment updated");
+    } catch {
+      setRows(prevRows);
+      toast.error("Couldn't update payment");
+    }
+  };
+
   const rowsFadeKey = useContentFadeKey(rows);
   const heading = direction === "received" ? "Payments Received" : "Payments Sent";
   const partyLabel = direction === "received" ? "From" : "To";
@@ -347,18 +427,32 @@ export default function PaymentsPage() {
               {loading ? <TableSkeleton rows={6} cols={6} /> :
                error ? <tr><td colSpan={6}><ErrorState onRetry={() => { const { from, to } = resolveDateRange(dateRange); load(direction, search, page, sort, from, to, amountMin, amountMax, partnerId); }} compact /></td></tr> :
                rows.length === 0 ? <tr><td colSpan={6}><EmptyState icon={ArrowLeftRight} compact title={search ? "No matches" : "No entries yet"} description={search ? `Nothing matches "${search}".` : `Record your first payment with the "Add Payment" button.`} /></td></tr> :
-               rows.map((r) => (
+               rows.map((r) => editId === r.id ? (
+                <tr key={r.id} className="bg-accent-tint/40">
+                  <td className="px-4 py-2" colSpan={5}>
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+                      <EditRowInputs editForm={editForm} setEditForm={setEditForm} />
+                    </div>
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap">
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => saveEdit(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-success hover:bg-success-tint" aria-label="Save">
+                        <Check className="w-4 h-4" strokeWidth={2.5} />
+                      </button>
+                      <button onClick={() => setEditId(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:bg-black/5" aria-label="Cancel">
+                        <X className="w-4 h-4" strokeWidth={2.5} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
                 <tr key={r.id} className="hover:bg-black/[0.015] transition-colors">
                   <td className="px-4 py-3 text-muted text-xs whitespace-nowrap">{fmtDate(r.date)}</td>
                   <td className="px-4 py-3 text-ink font-medium">{r.partyName}</td>
                   <td className="px-4 py-3 text-muted">{r.partnerName}</td>
                   <td className="px-4 py-3 text-right font-mono font-semibold text-ink tabular-nums">{formatMoney(r.amount)}</td>
                   <td className="px-4 py-3 text-muted text-xs">{r.note || "—"}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <button onClick={() => handleDelete(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-danger hover:bg-danger-tint transition-colors" aria-label="Delete entry">
-                      <Trash2 className="w-4 h-4" strokeWidth={2} />
-                    </button>
-                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap"><RowActions r={r} startEdit={startEdit} handleDelete={handleDelete} /></td>
                 </tr>
               ))}
             </tbody>
