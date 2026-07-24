@@ -59,17 +59,30 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const errors = validateCustomer(body);
     if (hasErrors(errors)) return NextResponse.json({ error: firstError(errors), fields: errors }, { status: 400 });
-    const [row] = await db.insert(customers).values({
-      name: body.name,
-      accountTitle: body.accountTitle ?? null,
-      owner: body.owner ?? null,
-      openingBalance: String(Number(body.openingBalance ?? 0)),
-      cnic: body.cnic ?? null,
-      address: body.address ?? null,
-      phone: body.phone ?? null,
-      whatsapp: body.whatsapp ?? null,
-      email: body.email ?? null,
-    }).returning();
+
+    let row;
+    try {
+      [row] = await db.insert(customers).values({
+        name: body.name,
+        accountTitle: body.accountTitle ?? null,
+        owner: body.owner ?? null,
+        openingBalance: String(Number(body.openingBalance ?? 0)),
+        cnic: body.cnic ?? null,
+        address: body.address ?? null,
+        phone: body.phone ?? null,
+        whatsapp: body.whatsapp ?? null,
+        email: body.email ?? null,
+      }).returning();
+    } catch (insertErr: unknown) {
+      const code = (insertErr as { code?: string })?.code;
+      if (code === "23505") {
+        return NextResponse.json(
+          { error: "A customer with this name already exists.", fields: { name: "A customer with this name already exists." } },
+          { status: 400 }
+        );
+      }
+      throw insertErr;
+    }
 
     // Re-link an orphaned party account left behind by a previously deleted
     // customer of the same name (customers.accountId is set-null on delete),
