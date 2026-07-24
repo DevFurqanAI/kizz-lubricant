@@ -41,8 +41,14 @@ export async function DELETE(
       .from(sales)
       .where(eq(sales.ledgerEntryId, entryId));
 
-    await db.delete(customerEntries).where(eq(customerEntries.id, entryId));
-    if (backingSale) await db.delete(sales).where(eq(sales.id, backingSale.id));
+    try {
+      await db.delete(customerEntries).where(eq(customerEntries.id, entryId));
+      if (backingSale) await db.delete(sales).where(eq(sales.id, backingSale.id));
+    } catch (innerErr) {
+      console.error("DELETE /customers/[id]/entries/[entryId] partial failure, recalculating anyway:", innerErr);
+      await recalcBalances(customerId).catch(() => {});
+      return NextResponse.json({ error: "Failed to delete ledger entry." }, { status: 500 });
+    }
 
     await recalcBalances(customerId);
     return NextResponse.json(await entriesFor(customerId));
