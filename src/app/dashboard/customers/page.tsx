@@ -195,7 +195,7 @@ export default function CustomersPage() {
 
   const handleDelete = async (id: number, e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
-    if (!(await confirm({ title: "Delete this customer?", message: "This permanently removes the customer and their entire ledger.", confirmText: "Delete", danger: true }))) return;
+    if (!(await confirm({ title: "Delete this customer?", message: "This permanently removes the customer and their ledger entries. Any past sales linked to them will remain on the Sales page as unlinked cash sales.", confirmText: "Delete", danger: true }))) return;
     const prev = customers;
     const prevCount = count;
     setCustomers(cs => cs.filter(c => c.id !== id));
