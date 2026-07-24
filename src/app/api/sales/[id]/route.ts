@@ -23,13 +23,22 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
       .from(sales)
       .where(eq(sales.id, id));
 
-    await db.delete(sales).where(eq(sales.id, id));
-
-    // Automation: remove the mirrored ledger entry and re-balance that customer.
-    if (existing?.ledgerEntryId) {
-      await db.delete(customerEntries).where(eq(customerEntries.id, existing.ledgerEntryId));
-      if (existing.customerId) await recalcBalances(existing.customerId);
+    // Delete the mirrored ledger row first, then the sale itself — if the
+    // second delete fails, we've at least removed the debit that would
+    // otherwise inflate the customer's balance forever (the sale row lingers
+    // instead, which is recoverable: the user retries the delete).
+    try {
+      if (existing?.ledgerEntryId) {
+        await db.delete(customerEntries).where(eq(customerEntries.id, existing.ledgerEntryId));
+      }
+      await db.delete(sales).where(eq(sales.id, id));
+    } catch (innerErr) {
+      console.error("DELETE /sales/[id] partial failure, recalculating anyway:", innerErr);
+      if (existing?.customerId) await recalcBalances(existing.customerId).catch(() => {});
+      return NextResponse.json({ error: "Failed to delete the sale. Please try again." }, { status: 500 });
     }
+
+    if (existing?.customerId) await recalcBalances(existing.customerId);
 
     return NextResponse.json({ ok: true });
   } catch (err) {
