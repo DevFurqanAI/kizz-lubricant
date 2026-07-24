@@ -75,15 +75,22 @@ export async function POST(req: NextRequest) {
     // customer of the same name (customers.accountId is set-null on delete),
     // so their old payment history reappears instead of staying invisible.
     // "Unclaimed" = no *other* live customer already points at it.
-    const [orphan] = await db
-      .select({ id: accounts.id })
-      .from(accounts)
-      .leftJoin(customers, eq(customers.accountId, accounts.id))
-      .where(and(eq(accounts.type, "party"), sql`lower(${accounts.name}) = lower(${row.name})`, isNull(customers.id)))
-      .limit(1);
-    if (orphan) {
-      await db.update(customers).set({ accountId: orphan.id }).where(eq(customers.id, row.id));
-      row.accountId = orphan.id;
+    // The customer row above is already committed — a relink failure here
+    // must not turn a successful creation into a false 500, so it's isolated
+    // in its own try/catch and logged rather than propagated.
+    try {
+      const [orphan] = await db
+        .select({ id: accounts.id })
+        .from(accounts)
+        .leftJoin(customers, eq(customers.accountId, accounts.id))
+        .where(and(eq(accounts.type, "party"), sql`lower(${accounts.name}) = lower(${row.name})`, isNull(customers.id)))
+        .limit(1);
+      if (orphan) {
+        await db.update(customers).set({ accountId: orphan.id }).where(eq(customers.id, row.id));
+        row.accountId = orphan.id;
+      }
+    } catch (relinkErr) {
+      console.error("POST /customers orphan account relink failed (customer was still created):", relinkErr);
     }
 
     return NextResponse.json(row, { status: 201 });
