@@ -75,15 +75,34 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ error: "No editable fields provided." }, { status: 400 });
     }
 
+    const [before] = await db.select().from(sales).where(eq(sales.id, id));
     const [row] = await db.update(sales).set(update).where(eq(sales.id, id)).returning();
 
     // Automation: keep the mirrored ledger entry in step with the edited sale.
+    // If this fails, revert the sale edit rather than leave the sale and its
+    // ledger mirror out of sync — same compensate-on-failure idiom as POST.
     if (row?.ledgerEntryId && row.customerId) {
-      await db
-        .update(customerEntries)
-        .set({ date: row.date, product: row.detail, packing: row.packing, unit: row.unit, qty: row.qty, rate: row.rate, debit: row.amount })
-        .where(eq(customerEntries.id, row.ledgerEntryId));
-      await recalcBalances(row.customerId);
+      try {
+        await db
+          .update(customerEntries)
+          .set({ date: row.date, product: row.detail, packing: row.packing, unit: row.unit, qty: row.qty, rate: row.rate, debit: row.amount })
+          .where(eq(customerEntries.id, row.ledgerEntryId));
+        await recalcBalances(row.customerId);
+      } catch (mirrorErr) {
+        console.error("PATCH /sales/[id] ledger mirror update failed, reverting sale edit:", mirrorErr);
+        if (before) {
+          await db
+            .update(sales)
+            .set({ date: before.date, detail: before.detail, packing: before.packing, unit: before.unit, qty: before.qty, rate: before.rate, amount: before.amount, saleKg: before.saleKg, saleKgUnit: before.saleKgUnit })
+            .where(eq(sales.id, id))
+            .catch(() => {});
+        }
+        await recalcBalances(row.customerId).catch(() => {});
+        return NextResponse.json(
+          { error: "Failed to update the linked ledger entry. The sale was not changed." },
+          { status: 500 }
+        );
+      }
     }
 
     return NextResponse.json(row);
