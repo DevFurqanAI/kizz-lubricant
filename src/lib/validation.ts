@@ -185,6 +185,7 @@ export function validateCustomer(b: Record<string, unknown>, mode: Mode = "creat
   if (active(b, "name", mode)) set(e, "name", checkRequiredText(b.name, "Name", 200));
   if (active(b, "accountTitle", mode)) set(e, "accountTitle", checkOptionalText(b.accountTitle, "Account Title", 200));
   if (active(b, "owner", mode)) set(e, "owner", checkOptionalText(b.owner, "Owner", 200));
+  if (active(b, "openingBalance", mode)) set(e, "openingBalance", checkMoney(b.openingBalance, "Opening Balance"));
   if (active(b, "cnic", mode)) set(e, "cnic", checkOptionalText(b.cnic, "CNIC", 30));
   if (active(b, "address", mode)) set(e, "address", checkOptionalText(b.address, "Address", 300));
   if (active(b, "phone", mode)) set(e, "phone", checkOptionalText(b.phone, "Cell #", 50));

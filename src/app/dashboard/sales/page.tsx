@@ -11,7 +11,7 @@ import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
 import { Pagination } from "@/components/pagination";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
-import { SortHeader, type Sort, nextSort } from "@/components/sort-header";
+import { SortHeader, SortToggleButton, type Sort, nextSort } from "@/components/sort-header";
 import { SearchInput } from "@/components/search-input";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { AmountRangeFilter } from "@/components/amount-range-filter";
@@ -468,9 +468,12 @@ export default function SalesPage() {
 
       <div className="flex items-center justify-between gap-4 flex-wrap">
         {/* View toggle: paginated entries vs per-month roll-up (the sheet's blocks) */}
-        <div className="inline-flex rounded-lg border border-line-strong overflow-hidden text-[13px]">
-          <button onClick={() => switchView("list")} className={`px-3 py-1.5 font-medium transition-colors ${view === "list" ? "bg-surface text-ink" : "text-muted hover:text-ink"}`}>Entries</button>
-          <button onClick={() => switchView("month")} className={`px-3 py-1.5 font-medium transition-colors border-l border-line-strong ${view === "month" ? "bg-surface text-ink" : "text-muted hover:text-ink"}`}>By month</button>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="inline-flex rounded-lg border border-line-strong overflow-hidden text-[13px]">
+            <button onClick={() => switchView("list")} className={`px-3 py-1.5 font-medium transition-colors ${view === "list" ? "bg-surface text-ink" : "text-muted hover:text-ink"}`}>Entries</button>
+            <button onClick={() => switchView("month")} className={`px-3 py-1.5 font-medium transition-colors border-l border-line-strong ${view === "month" ? "bg-surface text-ink" : "text-muted hover:text-ink"}`}>By month</button>
+          </div>
+          {view === "list" && <SortToggleButton sort={sort} onSort={onSort} />}
         </div>
         <div className="text-right flex-shrink-0">
           <p className="text-[11px] text-muted uppercase tracking-wider">Total</p>

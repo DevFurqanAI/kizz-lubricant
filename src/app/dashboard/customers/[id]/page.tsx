@@ -19,6 +19,7 @@ import { AmountRangeFilter } from "@/components/amount-range-filter";
 import { FilterBar } from "@/components/filter-bar";
 import { resolveDateRange, describeDateRange, type DateRangeSelection } from "@/lib/date-range";
 import { useSettledKey } from "@/lib/use-fade-key";
+import { SortToggleButton, nextSort, type Sort } from "@/components/sort-header";
 
 const VISIBLE_LIMIT = 100; // progressively reveal older rows beyond this
 
@@ -58,7 +59,12 @@ export default function CustomerLedgerPage() {
   const [dateRange, setDateRange] = useState<DateRangeSelection>({ preset: "all" });
   const [amountMin, setAmountMin] = useState("");
   const [amountMax, setAmountMax] = useState("");
-  const entriesFadeKey = useSettledKey(`${JSON.stringify(dateRange)}|${amountMin}|${amountMax}|${showAll}`);
+  // Entries load in full (no server pagination here), so sort is just a local
+  // display flip — newest-first by default; the underlying entries array
+  // (used for totals/current balance) stays oldest→newest regardless.
+  const [sort, setSort] = useState<Sort>({ col: "date", dir: "desc" });
+  const onSortEntries = (col: string) => setSort((s) => nextSort(s, col));
+  const entriesFadeKey = useSettledKey(`${JSON.stringify(dateRange)}|${amountMin}|${amountMax}|${showAll}|${sort.dir}`);
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -309,7 +315,7 @@ export default function CustomerLedgerPage() {
   // must not be affected by the date filter below, or it would look scoped
   // to the visible range when it isn't.
   const lastEntry = entries[entries.length - 1];
-  const currentBalance = lastEntry ? toNum(lastEntry.balance) : 0;
+  const currentBalance = lastEntry ? toNum(lastEntry.balance) : toNum(customer.openingBalance);
 
   const { from, to } = resolveDateRange(dateRange);
   const min = amountMin ? Number(amountMin) : null;
@@ -325,9 +331,14 @@ export default function CustomerLedgerPage() {
 
   const totalDebit = filteredEntries.reduce((a, e) => a + toNum(e.debit), 0);
   const totalCredit = filteredEntries.reduce((a, e) => a + toNum(e.credit), 0);
+  // filteredEntries is always oldest→newest (matches the running balance);
+  // flip only for display when the toggle is set to newest-first.
+  const orderedEntries = sort.dir === "desc" ? [...filteredEntries].reverse() : filteredEntries;
   // Keep the DOM light on long statements — show the most recent rows, reveal older on demand.
-  const hidden = !showAll && filteredEntries.length > VISIBLE_LIMIT ? filteredEntries.length - VISIBLE_LIMIT : 0;
-  const visibleEntries = hidden ? filteredEntries.slice(-VISIBLE_LIMIT) : filteredEntries;
+  const hidden = !showAll && orderedEntries.length > VISIBLE_LIMIT ? orderedEntries.length - VISIBLE_LIMIT : 0;
+  const visibleEntries = hidden
+    ? (sort.dir === "desc" ? orderedEntries.slice(0, VISIBLE_LIMIT) : orderedEntries.slice(-VISIBLE_LIMIT))
+    : orderedEntries;
 
   return (
     <div className="space-y-6">
@@ -344,6 +355,7 @@ export default function CustomerLedgerPage() {
               <h1 className="text-xl font-semibold tracking-tight text-ink">{customer.name}</h1>
               <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted">
                 {customer.owner && <span><b className="text-ink font-medium">Owner:</b> {customer.owner}</span>}
+                {toNum(customer.openingBalance) !== 0 && <span><b className="text-ink font-medium">Opening Balance:</b> {formatMoney(customer.openingBalance)}</span>}
                 {customer.cnic && <span><b className="text-ink font-medium">CNIC:</b> {customer.cnic}</span>}
                 {customer.address && <span><b className="text-ink font-medium">Address:</b> {customer.address}</span>}
                 {customer.phone && <span><b className="text-ink font-medium">Phone:</b> {customer.phone}</span>}
@@ -419,6 +431,7 @@ export default function CustomerLedgerPage() {
         active={dateRange.preset !== "all" || !!amountMin || !!amountMax}
         onClear={() => { setDateRange({ preset: "all" }); setAmountMin(""); setAmountMax(""); }}
       >
+        <SortToggleButton sort={sort} onSort={onSortEntries} />
         <DateRangeFilter value={dateRange} onChange={setDateRange} />
         <AmountRangeFilter min={amountMin} max={amountMax} onChange={(min, max) => { setAmountMin(min); setAmountMax(max); }} />
       </FilterBar>
@@ -583,9 +596,44 @@ export default function CustomerLedgerPage() {
                 const bal = toNum(e.balance);
                 const isDebitRow = toNum(e.debit) > 0;
                 const isCreditRow = toNum(e.credit) > 0 && !isDebitRow;
-                // A payment = a credit with no product line. Render it as one
+                // A payment row has no real product — either left blank, or
+                // typed by hand as "Payment" / "Payment Received" / "Payment Sent".
+                const productLabel = (e.product ?? "").trim().toLowerCase();
+                const isPaymentProduct = productLabel === "" || productLabel === "payment" || productLabel === "payment received" || productLabel === "payment sent";
+                // A payment = a credit with no real product line. Render it as one
                 // clear, italic "Payment Received" band spanning the item columns.
-                const isPayment = isCreditRow && (!e.product || e.product === "Payment");
+                const isPayment = isCreditRow && isPaymentProduct;
+                // Symmetric case: a debit with no real product line — money sent to
+                // the customer (refund/advance) rather than goods billed. Same
+                // banded treatment, amber instead of green so the two are never
+                // confused at a glance.
+                const isPaymentSent = isDebitRow && isPaymentProduct;
+
+                if (isPaymentSent) {
+                  return (
+                    <tr key={e.id} className="bg-warning-tint/40 hover:bg-warning-tint/60 transition-colors">
+                      <td className="px-4 py-3 text-muted text-xs whitespace-nowrap">{fmtDate(e.date)}</td>
+                      <td colSpan={6} className="px-4 py-3">
+                        <span className="italic font-semibold text-warning">Payment Sent</span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-warning font-semibold tabular-nums">{formatMoney(e.debit)}</td>
+                      <td className={`px-4 py-3 text-right font-mono font-semibold text-[13px] tabular-nums ${bal > 0 ? "text-warning" : bal < 0 ? "text-success" : "text-muted"}`}>
+                        {formatMoney(bal)}
+                      </td>
+                      <td className="px-4 py-3 text-warning/80 italic text-xs max-w-[180px] truncate">{e.account || "—"}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => startEdit(e)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-accent hover:bg-accent-tint transition-colors" aria-label="Edit entry">
+                            <Pencil className="w-4 h-4" strokeWidth={2} />
+                          </button>
+                          <button onClick={() => handleDelete(e.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted/60 hover:text-danger hover:bg-danger-tint transition-colors" aria-label="Delete entry">
+                            <Trash2 className="w-4 h-4" strokeWidth={2} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
 
                 if (isPayment) {
                   return (

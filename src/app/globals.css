@@ -5,6 +5,7 @@
 :root {
   --ring: rgba(226, 84, 12, 0.45);
   --sidebar-w: 248px;
+  color-scheme: light;
 }
 
 html,

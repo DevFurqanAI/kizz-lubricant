@@ -6,11 +6,12 @@ import { customers, customerEntries } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { validateCustomer, hasErrors, firstError } from "@/lib/validation";
 import { parseIdParam } from "@/lib/pagination";
+import { recalcBalances } from "@/lib/ledger";
 
 export const dynamic = "force-dynamic";
 
 // Only these columns may be edited via PATCH — never id / createdAt / raw body.
-const EDITABLE = ["name", "accountTitle", "owner", "cnic", "address", "phone", "whatsapp", "email"] as const;
+const EDITABLE = ["name", "accountTitle", "owner", "openingBalance", "cnic", "address", "phone", "whatsapp", "email"] as const;
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -46,7 +47,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ error: "No editable fields provided." }, { status: 400 });
     }
+    if ("openingBalance" in update) update.openingBalance = String(Number(update.openingBalance ?? 0));
     const [row] = await db.update(customers).set(update).where(eq(customers.id, id)).returning();
+    if ("openingBalance" in update) await recalcBalances(id);
     return NextResponse.json(row);
   } catch (err) {
     console.error("PATCH /customers/[id] failed:", err);

@@ -26,6 +26,10 @@ export const customers = pgTable("customers", {
   name: varchar("name", { length: 200 }).notNull(),
   accountTitle: varchar("account_title", { length: 200 }),
   owner: varchar("owner", { length: 200 }),
+  // Balance the customer owed (or was owed) before their first ledger entry —
+  // e.g. carried over from a paper ledger. recalcBalances anchors its running
+  // total to this instead of zero. Positive = they owed us; negative = advance.
+  openingBalance: numeric("opening_balance", { precision: 14, scale: 2 }).notNull().default("0"),
   // Lazily linked the first time this customer appears in a Payment — see
   // src/lib/accounts.ts. Null for customers who've never been paid via the
   // Payments page.

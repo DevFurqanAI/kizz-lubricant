@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     const balMap = new Map(
       (balances.rows as Array<{ customer_id: number; balance: string }>).map((r) => [Number(r.customer_id), Number(r.balance)])
     );
-    const rows = list.map((c) => ({ ...c, balance: balMap.get(c.id) ?? 0 }));
+    const rows = list.map((c) => ({ ...c, balance: balMap.get(c.id) ?? Number(c.openingBalance) }));
     return NextResponse.json({ rows, count: Number(count), page, limit });
   } catch (err) {
     console.error("GET /customers failed:", err);
@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
       name: body.name,
       accountTitle: body.accountTitle ?? null,
       owner: body.owner ?? null,
+      openingBalance: String(Number(body.openingBalance ?? 0)),
       cnic: body.cnic ?? null,
       address: body.address ?? null,
       phone: body.phone ?? null,

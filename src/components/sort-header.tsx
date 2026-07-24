@@ -1,4 +1,4 @@
-import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { ChevronUp, ChevronDown, ChevronsUpDown, ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react";
 
 export type Sort = { col: string; dir: "asc" | "desc" };
 
@@ -39,5 +39,27 @@ export function SortHeader({
         />
       </button>
     </th>
+  );
+}
+
+/** Per-column wording for the labeled sort-direction toggle below. */
+const SORT_LABELS: Record<string, { desc: string; asc: string }> = {
+  date: { desc: "Newest first", asc: "Oldest first" },
+  amount: { desc: "Highest first", asc: "Lowest first" },
+};
+
+/**
+ * A labeled "Newest first / Oldest first" style button, for pages whose only
+ * sort control is otherwise a subtle column-header click — kept visually
+ * consistent with the Salary page's explicit toggle. Flips the direction of
+ * whichever column is currently sorted; wording adapts to that column.
+ */
+export function SortToggleButton({ sort, onSort }: { sort: Sort; onSort: (col: string) => void }) {
+  const labels = SORT_LABELS[sort.col] ?? SORT_LABELS.date;
+  return (
+    <button onClick={() => onSort(sort.col)} className="btn-secondary btn-sm">
+      {sort.dir === "desc" ? <ArrowDownWideNarrow className="w-4 h-4" strokeWidth={2} /> : <ArrowUpNarrowWide className="w-4 h-4" strokeWidth={2} />}
+      {sort.dir === "desc" ? labels.desc : labels.asc}
+    </button>
   );
 }

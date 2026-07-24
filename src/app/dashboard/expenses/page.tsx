@@ -11,7 +11,7 @@ import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
 import { Pagination } from "@/components/pagination";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
-import { SortHeader, type Sort, nextSort } from "@/components/sort-header";
+import { SortHeader, SortToggleButton, type Sort, nextSort } from "@/components/sort-header";
 import { SearchInput } from "@/components/search-input";
 import { AmountRangeFilter } from "@/components/amount-range-filter";
 import { FilterBar } from "@/components/filter-bar";
@@ -357,6 +357,7 @@ export default function ExpensesPage() {
 
       {/* ── Search + date range ──────────────────────────────── */}
       <FilterBar active={!!(search || dateRange.preset !== "all" || amountMin || amountMax)} onClear={clearFilters}>
+        <SortToggleButton sort={sort} onSort={onSort} />
         <SearchInput value={search} onChange={onSearchChange} placeholder="Search expenses…" className="w-full max-w-xs" />
         <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
         <AmountRangeFilter min={amountMin} max={amountMax} onChange={(min, max) => handleFilterChange({ amountMin: min, amountMax: max })} />

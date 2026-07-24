@@ -11,7 +11,7 @@ import { useToast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm";
 import { Pagination } from "@/components/pagination";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
-import { SortHeader, type Sort, nextSort } from "@/components/sort-header";
+import { SortHeader, SortToggleButton, type Sort, nextSort } from "@/components/sort-header";
 import { SearchInput } from "@/components/search-input";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { AmountRangeFilter } from "@/components/amount-range-filter";
@@ -280,7 +280,8 @@ export default function PurchasingPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-end gap-4">
+      <div className="flex items-center justify-between gap-4">
+        <SortToggleButton sort={sort} onSort={onSort} />
         <div className="text-right flex-shrink-0">
           <p className="text-[11px] text-muted uppercase tracking-wider">Total</p>
           <p className="font-mono font-semibold text-ink tabular-nums">{formatMoney(total)}</p>

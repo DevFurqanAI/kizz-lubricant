@@ -372,7 +372,7 @@ export default function SalaryPage() {
       {/* Filters live on their own full-width row, never sharing space with the
           sort/style toggles above — selecting a filter option only ever reflows this row. */}
       <FilterBar active={!!(search || dateRange.preset !== "all" || amountMin || amountMax || employee || account)} onClear={clearFilters}>
-        <SearchInput value={search} onChange={handleSearch} placeholder="Search by employee…" className="w-full sm:flex-1 sm:min-w-[200px] sm:max-w-sm" />
+        <SearchInput value={search} onChange={handleSearch} placeholder="Search by employee…" className="w-full sm:w-auto sm:max-w-[200px]" />
         <DateRangeFilter value={dateRange} onChange={handleDateRangeChange} />
         <AmountRangeFilter min={amountMin} max={amountMax} onChange={(min, max) => handleFilterChange({ amountMin: min, amountMax: max })} />
         <select

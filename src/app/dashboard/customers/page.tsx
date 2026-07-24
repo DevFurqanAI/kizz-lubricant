@@ -23,7 +23,7 @@ const VIEW_STYLES = ["table", "cards"] as const;
 type ViewStyle = typeof VIEW_STYLES[number];
 const VIEW_LABELS: Record<ViewStyle, string> = { table: "Table", cards: "Cards" };
 
-type EditFormT = { name: string; owner: string; cnic: string; address: string; phone: string; whatsapp: string; email: string };
+type EditFormT = { name: string; owner: string; openingBalance: string; cnic: string; address: string; phone: string; whatsapp: string; email: string };
 
 function EditRowInputs({
   editForm,
@@ -47,6 +47,13 @@ function EditRowInputs({
         onChange={(e) => setEditForm((f) => ({ ...f, owner: e.target.value }))}
         placeholder="Owner"
         className={`input ${dense ? "px-2.5 py-1.5 text-xs w-full sm:w-32" : "px-2.5 py-1.5 text-xs w-full"}`}
+      />
+      <input
+        type="number"
+        value={editForm.openingBalance}
+        onChange={(e) => setEditForm((f) => ({ ...f, openingBalance: e.target.value }))}
+        placeholder="Opening Balance"
+        className={`input text-right font-mono ${dense ? "px-2.5 py-1.5 text-xs w-full sm:w-32" : "px-2.5 py-1.5 text-xs w-full"}`}
       />
       <input
         value={editForm.cnic}
@@ -94,10 +101,10 @@ export default function CustomersPage() {
   const [error, setError] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: "", accountTitle: "", owner: "", cnic: "", address: "", phone: "", whatsapp: "", email: "" });
+  const [form, setForm] = useState({ name: "", accountTitle: "", owner: "", openingBalance: "", cnic: "", address: "", phone: "", whatsapp: "", email: "" });
   const [formErrors, setFormErrors] = useState<FieldErrors>({});
   const [editId, setEditId] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState<EditFormT>({ name: "", owner: "", cnic: "", address: "", phone: "", whatsapp: "", email: "" });
+  const [editForm, setEditForm] = useState<EditFormT>({ name: "", owner: "", openingBalance: "", cnic: "", address: "", phone: "", whatsapp: "", email: "" });
   const [viewStyle, setViewStyle] = useState<ViewStyle>("table");
   const [exporting, setExporting] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -148,8 +155,8 @@ export default function CustomersPage() {
     setFormErrors({});
     setSaving(true);
     try {
-      await api.post("/customers", form);
-      setForm({ name: "", accountTitle: "", owner: "", cnic: "", address: "", phone: "", whatsapp: "", email: "" });
+      await api.post("/customers", { ...form, openingBalance: form.openingBalance ? Number(form.openingBalance) : 0 });
+      setForm({ name: "", accountTitle: "", owner: "", openingBalance: "", cnic: "", address: "", phone: "", whatsapp: "", email: "" });
       setShowForm(false);
       customerListCache.clear();
       setPage(1);
@@ -165,7 +172,7 @@ export default function CustomersPage() {
   const startEdit = (c: CustomerWithBalance, e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
     setEditId(c.id);
-    setEditForm({ name: c.name, owner: c.owner ?? "", cnic: c.cnic ?? "", address: c.address ?? "", phone: c.phone ?? "", whatsapp: c.whatsapp ?? "", email: c.email ?? "" });
+    setEditForm({ name: c.name, owner: c.owner ?? "", openingBalance: c.openingBalance ?? "0", cnic: c.cnic ?? "", address: c.address ?? "", phone: c.phone ?? "", whatsapp: c.whatsapp ?? "", email: c.email ?? "" });
   };
 
   const cancelEdit = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setEditId(null); };
@@ -252,6 +259,7 @@ export default function CustomersPage() {
             {[
               { key: "name", label: "Name / Account Title *" },
               { key: "owner", label: "Owner" },
+              { key: "openingBalance", label: "Opening Balance (Rs)", type: "number" },
               { key: "cnic", label: "CNIC" },
               { key: "address", label: "Address" },
               { key: "phone", label: "Cell #" },
@@ -313,13 +321,13 @@ export default function CustomersPage() {
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[640px]">
-              <thead><tr className="bg-black/[0.02] border-b border-line">{["Name", "CNIC", "Phone", "Email", "Address", "Balance", ""].map(h => <th key={h} className={`th ${h === "Balance" ? "text-right" : "text-left"}`}>{h}</th>)}</tr></thead>
+              <thead><tr className="bg-black/[0.02] border-b border-line">{["Name", "Owner", "CNIC", "Phone", "Email", "Address", "Balance", ""].map(h => <th key={h} className={`th ${h === "Balance" ? "text-right" : "text-left"}`}>{h}</th>)}</tr></thead>
               <tbody key={customersFadeKey} className="divide-y divide-line content-fade">
                 {customers.map(c => {
                   const bal = c.balance ?? 0;
                   return editId === c.id ? (
                     <tr key={c.id} className="bg-accent-tint/40">
-                      <td className="px-4 py-2" colSpan={6}>
+                      <td className="px-4 py-2" colSpan={7}>
                         <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
                           <EditRowInputs editForm={editForm} setEditForm={setEditForm} />
                         </div>
@@ -338,6 +346,7 @@ export default function CustomersPage() {
                   ) : (
                     <tr key={c.id} onClick={() => router.push(`/dashboard/customers/${c.id}`)} className="hover:bg-black/[0.015] transition-colors cursor-pointer">
                       <td className="px-4 py-3 font-medium text-ink">{c.name}</td>
+                      <td className="px-4 py-3 text-muted text-xs">{c.owner || "—"}</td>
                       <td className="px-4 py-3 text-muted text-xs">{c.cnic || "—"}</td>
                       <td className="px-4 py-3 text-muted text-xs whitespace-nowrap">{c.phone || "—"}</td>
                       <td className="px-4 py-3 text-muted text-xs">{c.email || "—"}</td>
@@ -372,6 +381,7 @@ export default function CustomersPage() {
                 <div key={c.id} className="card p-5 space-y-2 bg-accent-tint/40">
                   <input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} placeholder="Name *" className="input px-2.5 py-1.5 text-sm font-semibold" />
                   <input value={editForm.owner} onChange={e => setEditForm(f => ({ ...f, owner: e.target.value }))} placeholder="Owner" className="input px-2.5 py-1.5 text-xs" />
+                  <input type="number" value={editForm.openingBalance} onChange={e => setEditForm(f => ({ ...f, openingBalance: e.target.value }))} placeholder="Opening Balance" className="input px-2.5 py-1.5 text-xs text-right font-mono" />
                   <input value={editForm.address} onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))} placeholder="Address" className="input px-2.5 py-1.5 text-xs" />
                   <input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} placeholder="Cell #" className="input px-2.5 py-1.5 text-xs" />
                   <input type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} placeholder="Email" className="input px-2.5 py-1.5 text-xs" />
@@ -400,6 +410,7 @@ export default function CustomersPage() {
                   </span>
                 </div>
                 <p className="font-semibold text-ink group-hover:text-accent transition-colors">{c.name}</p>
+                {c.owner && <p className="text-xs text-muted mt-0.5">Owner: {c.owner}</p>}
                 <p className="text-xs text-muted mt-0.5">{c.address || "—"}</p>
                 {c.phone && <p className="text-xs text-muted mt-0.5">{c.phone}</p>}
                 <div className="mt-3 pt-3 border-t border-line flex items-end justify-between">
