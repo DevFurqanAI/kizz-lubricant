@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
 import { salary } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { validateSalary, hasErrors, firstError } from "@/lib/validation";
+import { validateSalary, hasErrors, firstError, formatMoney } from "@/lib/validation";
 import { parseIdParam } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +36,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if ("date" in b) update.date = b.date;
     if ("employee" in b) update.employee = b.employee;
     if ("account" in b) update.account = b.account ?? null;
-    if ("amount" in b) update.amount = String(Number(b.amount));
+    if ("amount" in b) update.amount = formatMoney(b.amount);
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ error: "No editable fields provided." }, { status: 400 });
     }

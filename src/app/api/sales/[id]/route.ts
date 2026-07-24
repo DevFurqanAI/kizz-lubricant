@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { sales, customerEntries } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { recalcBalances } from "@/lib/ledger";
-import { validateSale, hasErrors, firstError } from "@/lib/validation";
+import { validateSale, hasErrors, firstError, formatMoney } from "@/lib/validation";
 import { parseIdParam } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
@@ -65,7 +65,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if ("unit" in b) update.unit = num(b.unit);
     if ("qty" in b) update.qty = num(b.qty);
     if ("rate" in b) update.rate = num(b.rate);
-    if ("amount" in b) update.amount = String(Number(b.amount));
+    if ("amount" in b) update.amount = formatMoney(b.amount);
     if ("saleKg" in b) {
       update.saleKg = num(b.saleKg);
       // Keep the unit consistent with the value: set when there's a weight, clear otherwise.

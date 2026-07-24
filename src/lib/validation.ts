@@ -73,6 +73,11 @@ export function checkMoney(v: unknown, label: string, opts: { required?: boolean
   return null;
 }
 
+/** Format an already-`checkMoney`-validated value to the DB's numeric(_,2) shape. */
+export function formatMoney(v: unknown): string {
+  return Number(v).toFixed(2);
+}
+
 export function checkQty(v: unknown, label = "Quantity"): string | null {
   if (isBlank(v)) return null; // optional
   const n = Number(v);
