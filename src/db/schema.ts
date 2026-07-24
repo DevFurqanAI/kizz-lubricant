@@ -8,7 +8,9 @@ import {
   integer,
   date,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ─── Users ───────────────────────────────────────────────────
 export const users = pgTable("users", {
@@ -40,7 +42,9 @@ export const customers = pgTable("customers", {
   whatsapp: varchar("whatsapp", { length: 50 }),
   email: varchar("email", { length: 255 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  uniqueIndex("customers_name_unique").on(sql`lower(${t.name})`),
+]);
 
 // ─── Customer Ledger Entries ──────────────────────────────────
 // Debit  = goods billed to the customer (increases what they owe us)
@@ -158,6 +162,7 @@ export const accounts = pgTable("accounts", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
   index("accounts_type_idx").on(t.type),
+  uniqueIndex("accounts_name_type_unique").on(sql`lower(${t.name})`, t.type),
 ]);
 
 // ─── Transactions ────────────────────────────────────────────────────
