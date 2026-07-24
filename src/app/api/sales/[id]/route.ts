@@ -79,9 +79,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const [row] = await db.update(sales).set(update).where(eq(sales.id, id)).returning();
 
     // Automation: keep the mirrored ledger entry in step with the edited sale.
-    // If this fails, revert the sale edit rather than leave the sale and its
-    // ledger mirror out of sync — same compensate-on-failure idiom as POST.
+    // If this fails, revert BOTH the mirror row and the sale edit rather than
+    // leave the sale and its ledger mirror out of sync — same
+    // compensate-on-failure idiom as POST. Capturing beforeEntry lets us
+    // revert the mirror too if it's recalcBalances (not the mirror write
+    // itself) that throws, which would otherwise still leave the two diverged.
     if (row?.ledgerEntryId && row.customerId) {
+      const [beforeEntry] = await db.select().from(customerEntries).where(eq(customerEntries.id, row.ledgerEntryId));
       try {
         await db
           .update(customerEntries)
@@ -90,6 +94,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         await recalcBalances(row.customerId);
       } catch (mirrorErr) {
         console.error("PATCH /sales/[id] ledger mirror update failed, reverting sale edit:", mirrorErr);
+        if (beforeEntry) {
+          await db
+            .update(customerEntries)
+            .set({ date: beforeEntry.date, product: beforeEntry.product, packing: beforeEntry.packing, unit: beforeEntry.unit, qty: beforeEntry.qty, rate: beforeEntry.rate, debit: beforeEntry.debit })
+            .where(eq(customerEntries.id, row.ledgerEntryId))
+            .catch(() => {});
+        }
         if (before) {
           await db
             .update(sales)
